@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
 
 // TODO: Replace with real data from Supabase
 const MOCK_PRACTICES = [
-  { id: "1", name: "Vet Align", entity_name: "Vet Align Pty Ltd" },
-  { id: "2", name: "Pet Align", entity_name: "Pet Align Pty Ltd" },
+  { id: "1", name: "Sunrise Mobile Vet", entity_name: "Sunrise Mobile Vet Pty Ltd" },
+  { id: "2", name: "Sunrise Canine Rehab", entity_name: "Sunrise Canine Rehab Pty Ltd" },
 ];
 
 export function PracticeSwitcher() {

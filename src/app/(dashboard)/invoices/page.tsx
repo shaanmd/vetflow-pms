@@ -13,11 +13,11 @@ const arStats = [
 ];
 
 const mockInvoices = [
-  { id: "1", number: "VA-0042", date: "2026-03-14", client: "Mike O'Brien", total: "$450.00", status: "sent" },
-  { id: "2", number: "VA-0041", date: "2026-03-13", client: "Jane Smith", total: "$350.00", status: "paid" },
-  { id: "3", number: "PA-0018", date: "2026-03-12", client: "Sarah Johnson", total: "$185.00", status: "overdue" },
-  { id: "4", number: "VA-0040", date: "2026-03-10", client: "Tom Richards", total: "$650.00", status: "paid" },
-  { id: "5", number: "PA-0017", date: "2026-03-08", client: "Lisa Chen", total: "$120.00", status: "draft" },
+  { id: "1", number: "SM-0042", date: "2026-03-14", client: "Mike O'Brien", total: "$450.00", status: "sent" },
+  { id: "2", number: "SM-0041", date: "2026-03-13", client: "Jane Smith", total: "$350.00", status: "paid" },
+  { id: "3", number: "SR-0018", date: "2026-03-12", client: "Sarah Johnson", total: "$185.00", status: "overdue" },
+  { id: "4", number: "SM-0040", date: "2026-03-10", client: "Tom Richards", total: "$650.00", status: "paid" },
+  { id: "5", number: "SR-0017", date: "2026-03-08", client: "Lisa Chen", total: "$120.00", status: "draft" },
 ];
 
 const statusStyles: Record<string, string> = {

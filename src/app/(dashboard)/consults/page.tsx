@@ -6,10 +6,10 @@ import { Badge } from "@/components/ui/badge";
 
 // TODO: Replace with real data
 const mockConsults = [
-  { id: "1", date: "2026-03-14", patient: "Thunder", owner: "Mike O'Brien", type: "Equine Biomechanical", status: "draft", vet: "Shaan" },
-  { id: "2", date: "2026-03-14", patient: "Max", owner: "Sarah Johnson", type: "Rehab Follow-up", status: "finalised", vet: "Shaan" },
-  { id: "3", date: "2026-03-13", patient: "Cooper", owner: "Jane Smith", type: "Rehab Initial Assessment", status: "finalised", vet: "Shaan" },
-  { id: "4", date: "2026-03-12", patient: "Bella", owner: "Tom Richards", type: "Equine Dental", status: "finalised", vet: "Shaan" },
+  { id: "1", date: "2026-03-14", patient: "Thunder", owner: "Mike O'Brien", type: "Equine Biomechanical", status: "draft", vet: "Dr Taylor" },
+  { id: "2", date: "2026-03-14", patient: "Max", owner: "Sarah Johnson", type: "Rehab Follow-up", status: "finalised", vet: "Dr Taylor" },
+  { id: "3", date: "2026-03-13", patient: "Cooper", owner: "Jane Smith", type: "Rehab Initial Assessment", status: "finalised", vet: "Dr Taylor" },
+  { id: "4", date: "2026-03-12", patient: "Bella", owner: "Tom Richards", type: "Equine Dental", status: "finalised", vet: "Dr Taylor" },
 ];
 
 const statusStyles: Record<string, string> = {
