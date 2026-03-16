@@ -1,4 +1,5 @@
 import { Plus, Search } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -118,33 +119,36 @@ export default async function PatientsPage() {
       ) : (
         <div className="space-y-2">
           {patientList.map((patient) => (
-            <Card
+            <Link
               key={patient.id}
-              className="cursor-pointer hover:bg-accent/50 transition-colors"
+              href={`/patients/${patient.id}`}
+              className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
             >
-              <CardContent className="flex items-center gap-3 p-3">
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback className="text-lg">
-                    {speciesEmoji[patient.species] ?? speciesEmoji.other}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{patient.name}</span>
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                      {patient.species}
-                    </Badge>
+              <Card className="cursor-pointer hover:bg-accent/50 transition-colors">
+                <CardContent className="flex items-center gap-3 p-3">
+                  <Avatar className="h-10 w-10">
+                    <AvatarFallback className="text-lg">
+                      {speciesEmoji[patient.species] ?? speciesEmoji.other}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{patient.name}</span>
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {patient.species}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {patient.breed ? `${patient.breed} · ` : ""}
+                      {patient.ownerName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Last visit: {formatDate(patient.lastVisit)}
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {patient.breed ? `${patient.breed} · ` : ""}
-                    {patient.ownerName}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Last visit: {formatDate(patient.lastVisit)}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
       )}

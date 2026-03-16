@@ -6,10 +6,16 @@ import {
   Receipt,
   Clock,
   TrendingUp,
+  Plus,
+  UserPlus,
+  NotebookPen,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
+
+// ─── Status badge colours ────────────────────────────────────────────────────
 
 const statusColours: Record<string, string> = {
   confirmed: "bg-green-100 text-green-800",
@@ -18,8 +24,59 @@ const statusColours: Record<string, string> = {
   completed: "bg-gray-100 text-gray-800",
 };
 
+// ─── Appointment type helpers ─────────────────────────────────────────────────
+
+const APPT_TYPE_LABELS: Record<string, string> = {
+  consult: "General Consult",
+  "equine-dental": "Equine Dental",
+  "equine-biomech": "Equine Biomechanical",
+  "rehab-initial": "Rehab Initial Assessment",
+  "rehab-followup": "Rehab Follow-up",
+  palliative: "Palliative Consult",
+  vaccination: "Vaccination",
+  hydro: "Hydrotherapy",
+};
+
+function getApptTypeLabel(typeId: string): string {
+  if (APPT_TYPE_LABELS[typeId]) return APPT_TYPE_LABELS[typeId];
+  // Fallback: replace hyphens/underscores with spaces and title-case each word
+  return typeId
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Returns a Tailwind bg-* class for the coloured dot */
+function getApptTypeDotColour(typeId: string): string {
+  if (typeId.startsWith("equine")) return "bg-green-500";
+  if (typeId.startsWith("rehab")) return "bg-purple-500";
+  if (typeId === "palliative") return "bg-violet-500";
+  if (typeId === "vaccination") return "bg-cyan-500";
+  if (typeId === "hydro") return "bg-teal-500";
+  // consult / fallback
+  return "bg-blue-500";
+}
+
+// ─── Stat card accent colours ─────────────────────────────────────────────────
+
+/** border-l colour class for each stat card */
+const STAT_BORDER_COLOURS = [
+  "border-l-teal-500",   // Today's Appointments
+  "border-l-blue-500",   // Active Patients
+  "border-l-yellow-500", // Pending Consults
+  "border-l-red-500",    // Outstanding Invoices
+] as const;
+
+/** Icon colour class for each stat card */
+const STAT_ICON_COLOURS = [
+  "text-teal-500",
+  "text-blue-500",
+  "text-yellow-500",
+  "text-red-500",
+] as const;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function formatTime(time: string): string {
-  // time is "HH:MM:SS" from Postgres
   const [hourStr, minuteStr] = time.split(":");
   const hour = parseInt(hourStr, 10);
   const minute = minuteStr;
@@ -28,10 +85,23 @@ function formatTime(time: string): string {
   return `${displayHour}:${minute} ${ampm}`;
 }
 
+// ─── Quick actions ────────────────────────────────────────────────────────────
+
+const QUICK_ACTIONS = [
+  { label: "New Appointment", icon: CalendarDays, href: "/appointments/new" },
+  { label: "New Consult", icon: NotebookPen, href: "/consults/new" },
+  { label: "New Patient", icon: PawPrint, href: "/patients/new" },
+  { label: "New Invoice", icon: Receipt, href: "/invoices/new" },
+] as const;
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) {
     redirect("/login");
   }
@@ -53,7 +123,6 @@ export default async function DashboardPage() {
 
   const practiceIds = (userPractices ?? []).map((row) => row.practice_id);
 
-  // All stat and appointment queries require at least one practice
   let todayAppointments: {
     id: string;
     start_time: string;
@@ -71,7 +140,6 @@ export default async function DashboardPage() {
   let outstandingInvoiceSum = 0;
 
   if (practiceIds.length > 0) {
-    // Today's appointments with patient and client names
     const { data: apptData } = await supabase
       .from("appointments")
       .select(`
@@ -92,7 +160,6 @@ export default async function DashboardPage() {
     todayAppointments = (apptData ?? []) as unknown as typeof todayAppointments;
     appointmentCount = todayAppointments.length;
 
-    // Count active patients
     const { count: patientCount } = await supabase
       .from("patients")
       .select("id", { count: "exact", head: true })
@@ -101,7 +168,6 @@ export default async function DashboardPage() {
 
     activePatientCount = patientCount ?? 0;
 
-    // Count draft consults
     const { count: consultCount } = await supabase
       .from("consults")
       .select("id", { count: "exact", head: true })
@@ -110,7 +176,6 @@ export default async function DashboardPage() {
 
     draftConsultCount = consultCount ?? 0;
 
-    // Sum outstanding invoices (sent, overdue, partially_paid)
     const { data: invoiceData } = await supabase
       .from("invoices")
       .select("total")
@@ -130,7 +195,8 @@ export default async function DashboardPage() {
       label: "Today's Appointments",
       value: String(appointmentCount),
       icon: CalendarDays,
-      change: appointmentCount === 1 ? "1 appointment" : `${appointmentCount} appointments`,
+      change:
+        appointmentCount === 1 ? "1 appointment" : `${appointmentCount} appointments`,
     },
     {
       label: "Active Patients",
@@ -146,7 +212,10 @@ export default async function DashboardPage() {
     },
     {
       label: "Outstanding Invoices",
-      value: `$${outstandingInvoiceSum.toLocaleString("en-AU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+      value: `$${outstandingInvoiceSum.toLocaleString("en-AU", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      })}`,
       icon: Receipt,
       change: "sent, overdue, partial",
     },
@@ -154,6 +223,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground text-sm">
@@ -163,11 +233,14 @@ export default async function DashboardPage() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {stats.map((stat) => (
-          <Card key={stat.label}>
+        {stats.map((stat, i) => (
+          <Card
+            key={stat.label}
+            className={`border-l-4 ${STAT_BORDER_COLOURS[i]}`}
+          >
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <stat.icon className="h-4 w-4 text-muted-foreground" />
+                <stat.icon className={`h-4 w-4 ${STAT_ICON_COLOURS[i]}`} />
                 <TrendingUp className="h-3 w-3 text-green-500" />
               </div>
               <p className="text-2xl font-bold">{stat.value}</p>
@@ -175,6 +248,19 @@ export default async function DashboardPage() {
               <p className="text-xs text-muted-foreground mt-1">{stat.change}</p>
             </CardContent>
           </Card>
+        ))}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        {QUICK_ACTIONS.map((action) => (
+          <a key={action.label} href={action.href} className="shrink-0">
+            <Button variant="outline" size="sm" className="gap-1.5 whitespace-nowrap">
+              <Plus className="h-3.5 w-3.5" />
+              <action.icon className="h-3.5 w-3.5" />
+              {action.label}
+            </Button>
+          </a>
         ))}
       </div>
 
@@ -200,6 +286,9 @@ export default async function DashboardPage() {
                   ? "House call"
                   : "Clinic";
 
+              const typeLabel = getApptTypeLabel(apt.appointment_type_id);
+              const dotColour = getApptTypeDotColour(apt.appointment_type_id);
+
               return (
                 <div
                   key={apt.id}
@@ -211,14 +300,24 @@ export default async function DashboardPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm">
-                        {(Array.isArray(apt.patients) ? apt.patients[0]?.name : apt.patients?.name) ?? "Unknown patient"}
+                        {(Array.isArray(apt.patients)
+                          ? apt.patients[0]?.name
+                          : apt.patients?.name) ?? "Unknown patient"}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        ({(Array.isArray(apt.clients) ? apt.clients[0]?.name : apt.clients?.name) ?? "Unknown client"})
+                        (
+                        {(Array.isArray(apt.clients)
+                          ? apt.clients[0]?.name
+                          : apt.clients?.name) ?? "Unknown client"}
+                        )
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {apt.appointment_type_id}
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                      <span
+                        className={`inline-block h-2 w-2 rounded-full shrink-0 ${dotColour}`}
+                        aria-hidden="true"
+                      />
+                      {typeLabel}
                     </p>
                     <p className="text-xs text-muted-foreground">{location}</p>
                   </div>
