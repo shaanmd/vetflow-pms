@@ -1,27 +1,97 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ChevronLeft, ChevronRight, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getAppointments, type AppointmentRow } from "./actions";
 
-const today = new Date();
+// ── Helpers ────────────────────────────────────────────────────────────────
+
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// TODO: Replace with real data
-const mockAppointments = [
-  { id: "1", time: "9:00", endTime: "10:00", patient: "Max", type: "Rehab Follow-up", colour: "bg-blue-100 border-blue-300 text-blue-800" },
-  { id: "2", time: "10:30", endTime: "11:30", patient: "Bella", type: "Equine Dental", colour: "bg-green-100 border-green-300 text-green-800" },
-  { id: "t1", time: "11:30", endTime: "12:00", patient: "", type: "Travel", colour: "bg-gray-100 border-gray-300 text-gray-500" },
-  { id: "3", time: "13:00", endTime: "14:30", patient: "Cooper", type: "Rehab Initial", colour: "bg-purple-100 border-purple-300 text-purple-800" },
-  { id: "4", time: "15:00", endTime: "16:00", patient: "Thunder", type: "Equine Biomech", colour: "bg-amber-100 border-amber-300 text-amber-800" },
-];
+/** Format a JS Date as YYYY-MM-DD (local, not UTC) */
+function toDateString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+/** Format a time string like "09:00:00" → "9:00 AM" */
+function formatTime(t: string): string {
+  const [h, m] = t.split(":");
+  const hour = parseInt(h, 10);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h12}:${m} ${ampm}`;
+}
+
+// ── Appointment-type colour map ────────────────────────────────────────────
+// Keys match the appointment_type_id values used in the seed / product setup.
+// Add more entries here as new appointment types are created.
+const TYPE_COLOURS: Record<string, string> = {
+  rehab_initial:    "bg-purple-100 border-purple-300 text-purple-800",
+  rehab_followup:   "bg-blue-100   border-blue-300   text-blue-800",
+  equine_dental:    "bg-green-100  border-green-300  text-green-800",
+  equine_biomech:   "bg-amber-100  border-amber-300  text-amber-800",
+  house_call:       "bg-teal-100   border-teal-300   text-teal-800",
+  wellness:         "bg-lime-100   border-lime-300   text-lime-800",
+  vaccination:      "bg-cyan-100   border-cyan-300   text-cyan-800",
+  surgery:          "bg-rose-100   border-rose-300   text-rose-800",
+};
+
+const TRAVEL_COLOUR = "bg-gray-100 border-gray-300 text-gray-500";
+const FALLBACK_COLOUR = "bg-slate-100 border-slate-300 text-slate-700";
+
+function appointmentColour(typeId: string): string {
+  return TYPE_COLOURS[typeId] ?? FALLBACK_COLOUR;
+}
+
+// ── Component ──────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
   const [view, setView] = useState("day");
-  const [currentDate] = useState(today);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch appointments whenever the date changes (day view only)
+  useEffect(() => {
+    if (view !== "day") return;
+    let cancelled = false;
+
+    setLoading(true);
+    getAppointments(toDateString(currentDate)).then((data) => {
+      if (!cancelled) {
+        setAppointments(data);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDate, view]);
+
+  // ── Date navigation ──────────────────────────────────────────────────────
+  function prevDay() {
+    setCurrentDate((d) => {
+      const next = new Date(d);
+      next.setDate(next.getDate() - 1);
+      return next;
+    });
+  }
+
+  function nextDay() {
+    setCurrentDate((d) => {
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
+      return next;
+    });
+  }
 
   const formattedDate = currentDate.toLocaleDateString("en-AU", {
     weekday: "long",
@@ -29,6 +99,115 @@ export default function CalendarPage() {
     month: "long",
     year: "numeric",
   });
+
+  // ── Render helpers ───────────────────────────────────────────────────────
+
+  /** Render an appointment card (real appointment or travel buffer) */
+  function renderAppointmentCard(apt: AppointmentRow) {
+    const isTravel = apt.appointment_type_id === "travel";
+    const colour = isTravel ? TRAVEL_COLOUR : appointmentColour(apt.appointment_type_id);
+    const startLabel = formatTime(apt.start_time);
+    const endLabel = formatTime(apt.end_time);
+
+    return (
+      <Card
+        key={apt.id}
+        className={`border-l-4 ${colour} cursor-pointer hover:shadow-md transition-shadow`}
+      >
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">
+                {startLabel} – {endLabel}
+              </p>
+              {isTravel ? (
+                <p className="text-xs text-muted-foreground mt-1 italic">
+                  Travel buffer
+                </p>
+              ) : (
+                <>
+                  {apt.patient && (
+                    <p className="text-sm font-semibold mt-1">{apt.patient.name}</p>
+                  )}
+                  {apt.client && (
+                    <p className="text-xs text-muted-foreground">
+                      {apt.client.name}
+                    </p>
+                  )}
+                  <Badge variant="secondary" className="text-[10px] mt-1">
+                    {apt.appointment_type_id.replace(/_/g, " ")}
+                  </Badge>
+                  {apt.location_type === "house_call" && apt.location_address && (
+                    <p className="text-xs text-muted-foreground mt-1 truncate max-w-[240px]">
+                      {apt.location_address}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+            {!isTravel && apt.status !== "scheduled" && (
+              <Badge
+                variant="outline"
+                className="text-[10px] capitalize shrink-0 ml-2"
+              >
+                {apt.status}
+              </Badge>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  /** Render travel time buffer blocks that follow a house-call appointment */
+  function renderWithTravelBuffers(apts: AppointmentRow[]) {
+    const blocks: React.ReactNode[] = [];
+
+    apts.forEach((apt) => {
+      blocks.push(renderAppointmentCard(apt));
+
+      if (
+        apt.location_type === "house_call" &&
+        apt.travel_time_minutes &&
+        apt.travel_time_minutes > 0
+      ) {
+        // Calculate buffer start = appointment end_time
+        const [eh, em] = apt.end_time.split(":").map(Number);
+        const bufferStart = new Date(0, 0, 0, eh, em);
+        const bufferEnd = new Date(
+          bufferStart.getTime() + apt.travel_time_minutes * 60_000
+        );
+
+        const fmt = (d: Date) => {
+          const h = d.getHours();
+          const min = String(d.getMinutes()).padStart(2, "0");
+          const ampm = h >= 12 ? "PM" : "AM";
+          const h12 = h % 12 === 0 ? 12 : h % 12;
+          return `${h12}:${min} ${ampm}`;
+        };
+
+        blocks.push(
+          <Card
+            key={`travel-${apt.id}`}
+            className={`border-l-4 ${TRAVEL_COLOUR}`}
+          >
+            <CardContent className="p-3">
+              <p className="text-sm font-medium">
+                {fmt(bufferStart)} – {fmt(bufferEnd)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 italic">
+                Travel buffer ({apt.travel_time_minutes} min)
+              </p>
+            </CardContent>
+          </Card>
+        );
+      }
+    });
+
+    return blocks;
+  }
+
+  // ── JSX ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-4">
@@ -43,13 +222,25 @@ export default function CalendarPage() {
       {/* View Toggle + Date Navigation */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className="min-w-[44px] min-h-[44px]">
+          <Button
+            variant="outline"
+            size="icon"
+            className="min-w-[44px] min-h-[44px]"
+            onClick={prevDay}
+            aria-label="Previous day"
+          >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="text-sm font-medium min-w-[200px] text-center">
             {formattedDate}
           </span>
-          <Button variant="outline" size="icon" className="min-w-[44px] min-h-[44px]">
+          <Button
+            variant="outline"
+            size="icon"
+            className="min-w-[44px] min-h-[44px]"
+            onClick={nextDay}
+            aria-label="Next day"
+          >
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -65,34 +256,20 @@ export default function CalendarPage() {
       {/* Day View — Mobile-first agenda style */}
       {view === "day" && (
         <div className="space-y-2">
-          {mockAppointments.map((apt) => (
-            <Card
-              key={apt.id}
-              className={`border-l-4 ${apt.colour} cursor-pointer hover:shadow-md transition-shadow`}
-            >
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">
-                      {apt.time} – {apt.endTime}
-                    </p>
-                    {apt.patient ? (
-                      <>
-                        <p className="text-sm font-semibold mt-1">{apt.patient}</p>
-                        <Badge variant="secondary" className="text-[10px] mt-1">
-                          {apt.type}
-                        </Badge>
-                      </>
-                    ) : (
-                      <p className="text-xs text-muted-foreground mt-1 italic">
-                        {apt.type} buffer
-                      </p>
-                    )}
-                  </div>
-                </div>
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              <span className="text-sm">Loading appointments…</span>
+            </div>
+          ) : appointments.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-muted-foreground">
+                <p className="text-sm">No appointments scheduled for this day.</p>
               </CardContent>
             </Card>
-          ))}
+          ) : (
+            renderWithTravelBuffers(appointments)
+          )}
         </div>
       )}
 

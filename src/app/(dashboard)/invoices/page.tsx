@@ -1,24 +1,11 @@
 import { Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Receipt, AlertTriangle, DollarSign, Clock } from "lucide-react";
-
-// TODO: Replace with real data
-const arStats = [
-  { label: "Total Outstanding", value: "$3,250", icon: DollarSign },
-  { label: "Overdue", value: "$850", icon: AlertTriangle },
-  { label: "Pending", value: "5", icon: Clock },
-];
-
-const mockInvoices = [
-  { id: "1", number: "SM-0042", date: "2026-03-14", client: "Mike O'Brien", total: "$450.00", status: "sent" },
-  { id: "2", number: "SM-0041", date: "2026-03-13", client: "Jane Smith", total: "$350.00", status: "paid" },
-  { id: "3", number: "SR-0018", date: "2026-03-12", client: "Sarah Johnson", total: "$185.00", status: "overdue" },
-  { id: "4", number: "SM-0040", date: "2026-03-10", client: "Tom Richards", total: "$650.00", status: "paid" },
-  { id: "5", number: "SR-0017", date: "2026-03-08", client: "Lisa Chen", total: "$120.00", status: "draft" },
-];
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 
 const statusStyles: Record<string, string> = {
   draft: "bg-gray-100 text-gray-800",
@@ -28,7 +15,60 @@ const statusStyles: Record<string, string> = {
   partially_paid: "bg-yellow-100 text-yellow-800",
 };
 
-export default function InvoicesPage() {
+const AR_STATUSES = ["sent", "overdue", "partially_paid"];
+
+function formatAUD(cents: number): string {
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    minimumFractionDigits: 2,
+  }).format(cents);
+}
+
+export default async function InvoicesPage() {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  // Get practice IDs for this user
+  const { data: userPractices } = await supabase
+    .from("user_practices")
+    .select("practice_id")
+    .eq("user_id", user.id);
+
+  const practiceIds = (userPractices ?? []).map((r) => r.practice_id);
+
+  // Fetch invoices joined with clients for client name, ordered by date desc
+  const { data: invoices } = practiceIds.length > 0
+    ? await supabase
+        .from("invoices")
+        .select("id, invoice_number, date, total, status, clients(name)")
+        .in("practice_id", practiceIds)
+        .order("date", { ascending: false })
+    : { data: [] };
+
+  const rows = invoices ?? [];
+
+  // Calculate AR stats
+  const totalOutstanding = rows
+    .filter((inv) => AR_STATUSES.includes(inv.status))
+    .reduce((sum, inv) => sum + (inv.total ?? 0), 0);
+
+  const overdueAmount = rows
+    .filter((inv) => inv.status === "overdue")
+    .reduce((sum, inv) => sum + (inv.total ?? 0), 0);
+
+  const pendingCount = rows.filter((inv) =>
+    AR_STATUSES.includes(inv.status)
+  ).length;
+
+  const arStats = [
+    { label: "Total Outstanding", value: formatAUD(totalOutstanding), icon: DollarSign },
+    { label: "Overdue", value: formatAUD(overdueAmount), icon: AlertTriangle },
+    { label: "Pending", value: String(pendingCount), icon: Clock },
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -61,29 +101,51 @@ export default function InvoicesPage() {
       </div>
 
       <div className="space-y-2">
-        {mockInvoices.map((invoice) => (
-          <Card key={invoice.id} className="cursor-pointer hover:bg-accent/50 transition-colors">
-            <CardContent className="flex items-center justify-between p-3">
-              <div className="flex items-center gap-3">
-                <Receipt className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-medium">
-                      {invoice.number}
-                    </span>
-                    <Badge variant="secondary" className={statusStyles[invoice.status]}>
-                      {invoice.status}
-                    </Badge>
+        {rows.length === 0 ? (
+          <p className="text-center text-sm text-muted-foreground py-8">
+            No invoices found.
+          </p>
+        ) : (
+          rows.map((invoice) => {
+            const clientName =
+              (invoice.clients as { name?: string } | null)?.name ??
+              "Unknown Client";
+            const formattedDate = invoice.date
+              ? new Date(invoice.date).toLocaleDateString("en-AU")
+              : "—";
+            return (
+              <Card
+                key={invoice.id}
+                className="cursor-pointer hover:bg-accent/50 transition-colors"
+              >
+                <CardContent className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <Receipt className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-medium">
+                          {invoice.invoice_number ?? `#${invoice.id.slice(0, 8)}`}
+                        </span>
+                        <Badge
+                          variant="secondary"
+                          className={statusStyles[invoice.status] ?? ""}
+                        >
+                          {invoice.status}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {clientName} · {formattedDate}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {invoice.client} · {invoice.date}
-                  </p>
-                </div>
-              </div>
-              <span className="font-semibold text-sm">{invoice.total}</span>
-            </CardContent>
-          </Card>
-        ))}
+                  <span className="font-semibold text-sm">
+                    {formatAUD(invoice.total ?? 0)}
+                  </span>
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
       </div>
     </div>
   );

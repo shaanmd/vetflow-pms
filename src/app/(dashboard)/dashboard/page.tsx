@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import {
   CalendarDays,
   PawPrint,
@@ -8,53 +9,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-// TODO: Replace with real data
-const stats = [
-  { label: "Today's Appointments", value: "4", icon: CalendarDays, change: "+2 from yesterday" },
-  { label: "Active Patients", value: "127", icon: PawPrint, change: "+3 this week" },
-  { label: "Pending Consults", value: "2", icon: FileText, change: "drafts" },
-  { label: "Outstanding Invoices", value: "$1,850", icon: Receipt, change: "3 invoices" },
-];
-
-const todayAppointments = [
-  {
-    id: "1",
-    time: "9:00 AM",
-    patient: "Max",
-    owner: "Sarah Johnson",
-    type: "Rehab Follow-up",
-    status: "confirmed",
-    location: "House call — 42 Elm St",
-  },
-  {
-    id: "2",
-    time: "10:30 AM",
-    patient: "Bella",
-    owner: "Tom Richards",
-    type: "Equine Dental",
-    status: "scheduled",
-    location: "House call — Sunshine Stables",
-  },
-  {
-    id: "3",
-    time: "1:00 PM",
-    patient: "Cooper",
-    owner: "Jane Smith",
-    type: "Rehab Initial Assessment",
-    status: "confirmed",
-    location: "Clinic",
-  },
-  {
-    id: "4",
-    time: "3:00 PM",
-    patient: "Thunder",
-    owner: "Mike O'Brien",
-    type: "Equine Biomechanical",
-    status: "scheduled",
-    location: "House call — Willowdale Farm",
-  },
-];
+import { createClient } from "@/lib/supabase/server";
 
 const statusColours: Record<string, string> = {
   confirmed: "bg-green-100 text-green-800",
@@ -63,13 +18,146 @@ const statusColours: Record<string, string> = {
   completed: "bg-gray-100 text-gray-800",
 };
 
-export default function DashboardPage() {
+function formatTime(time: string): string {
+  // time is "HH:MM:SS" from Postgres
+  const [hourStr, minuteStr] = time.split(":");
+  const hour = parseInt(hourStr, 10);
+  const minute = minuteStr;
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+  return `${displayHour}:${minute} ${ampm}`;
+}
+
+export default async function DashboardPage() {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+
+  // Fetch user profile for name
+  const { data: userProfile } = await supabase
+    .from("users")
+    .select("name")
+    .eq("id", user.id)
+    .single();
+
+  // Fetch practice IDs for this user
+  const { data: userPractices } = await supabase
+    .from("user_practices")
+    .select("practice_id")
+    .eq("user_id", user.id);
+
+  const practiceIds = (userPractices ?? []).map((row) => row.practice_id);
+
+  // All stat and appointment queries require at least one practice
+  let todayAppointments: {
+    id: string;
+    start_time: string;
+    status: string;
+    location_type: string;
+    location_address: string | null;
+    appointment_type_id: string;
+    patients: { name: string } | null;
+    clients: { name: string } | null;
+  }[] = [];
+
+  let appointmentCount = 0;
+  let activePatientCount = 0;
+  let draftConsultCount = 0;
+  let outstandingInvoiceSum = 0;
+
+  if (practiceIds.length > 0) {
+    // Today's appointments with patient and client names
+    const { data: apptData } = await supabase
+      .from("appointments")
+      .select(`
+        id,
+        start_time,
+        status,
+        location_type,
+        location_address,
+        appointment_type_id,
+        patients ( name ),
+        clients ( name )
+      `)
+      .in("practice_id", practiceIds)
+      .eq("date", today)
+      .not("status", "in", "(cancelled,no_show)")
+      .order("start_time");
+
+    todayAppointments = (apptData ?? []) as unknown as typeof todayAppointments;
+    appointmentCount = todayAppointments.length;
+
+    // Count active patients
+    const { count: patientCount } = await supabase
+      .from("patients")
+      .select("id", { count: "exact", head: true })
+      .in("practice_id", practiceIds)
+      .eq("status", "active");
+
+    activePatientCount = patientCount ?? 0;
+
+    // Count draft consults
+    const { count: consultCount } = await supabase
+      .from("consults")
+      .select("id", { count: "exact", head: true })
+      .in("practice_id", practiceIds)
+      .eq("status", "draft");
+
+    draftConsultCount = consultCount ?? 0;
+
+    // Sum outstanding invoices (sent, overdue, partially_paid)
+    const { data: invoiceData } = await supabase
+      .from("invoices")
+      .select("total")
+      .in("practice_id", practiceIds)
+      .in("status", ["sent", "overdue", "partially_paid"]);
+
+    outstandingInvoiceSum = (invoiceData ?? []).reduce(
+      (sum, inv) => sum + (inv.total ?? 0),
+      0
+    );
+  }
+
+  const firstName = userProfile?.name?.split(" ")[0] ?? "there";
+
+  const stats = [
+    {
+      label: "Today's Appointments",
+      value: String(appointmentCount),
+      icon: CalendarDays,
+      change: appointmentCount === 1 ? "1 appointment" : `${appointmentCount} appointments`,
+    },
+    {
+      label: "Active Patients",
+      value: String(activePatientCount),
+      icon: PawPrint,
+      change: "across your practices",
+    },
+    {
+      label: "Pending Consults",
+      value: String(draftConsultCount),
+      icon: FileText,
+      change: "drafts",
+    },
+    {
+      label: "Outstanding Invoices",
+      value: `$${outstandingInvoiceSum.toLocaleString("en-AU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+      icon: Receipt,
+      change: "sent, overdue, partial",
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground text-sm">
-          Welcome back. Here&apos;s your day.
+          Welcome back, {firstName}. Here&apos;s your day.
         </p>
       </div>
 
@@ -99,34 +187,51 @@ export default function DashboardPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {todayAppointments.map((apt) => (
-            <div
-              key={apt.id}
-              className="flex items-start gap-3 p-3 rounded-lg border hover:bg-accent/50 transition-colors cursor-pointer"
-            >
-              <div className="text-sm font-medium text-muted-foreground min-w-[70px]">
-                {apt.time}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-sm">{apt.patient}</span>
-                  <span className="text-xs text-muted-foreground">
-                    ({apt.owner})
-                  </span>
+          {todayAppointments.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No appointments scheduled for today.
+            </p>
+          ) : (
+            todayAppointments.map((apt) => {
+              const location =
+                apt.location_type === "house_call" && apt.location_address
+                  ? `House call — ${apt.location_address}`
+                  : apt.location_type === "house_call"
+                  ? "House call"
+                  : "Clinic";
+
+              return (
+                <div
+                  key={apt.id}
+                  className="flex items-start gap-3 p-3 rounded-lg border hover:bg-accent/50 transition-colors cursor-pointer"
+                >
+                  <div className="text-sm font-medium text-muted-foreground min-w-[70px]">
+                    {formatTime(apt.start_time)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm">
+                        {(Array.isArray(apt.patients) ? apt.patients[0]?.name : apt.patients?.name) ?? "Unknown patient"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        ({(Array.isArray(apt.clients) ? apt.clients[0]?.name : apt.clients?.name) ?? "Unknown client"})
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {apt.appointment_type_id}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{location}</p>
+                  </div>
+                  <Badge
+                    variant="secondary"
+                    className={statusColours[apt.status] || ""}
+                  >
+                    {apt.status}
+                  </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {apt.type}
-                </p>
-                <p className="text-xs text-muted-foreground">{apt.location}</p>
-              </div>
-              <Badge
-                variant="secondary"
-                className={statusColours[apt.status] || ""}
-              >
-                {apt.status}
-              </Badge>
-            </div>
-          ))}
+              );
+            })
+          )}
         </CardContent>
       </Card>
     </div>

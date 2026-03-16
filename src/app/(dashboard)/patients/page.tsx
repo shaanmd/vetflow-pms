@@ -4,15 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-
-// TODO: Replace with real data from Supabase
-const mockPatients = [
-  { id: "1", name: "Max", species: "dog", breed: "German Shepherd", owner: "Sarah Johnson", status: "active", lastVisit: "2026-03-10" },
-  { id: "2", name: "Bella", species: "horse", breed: "Thoroughbred", owner: "Tom Richards", status: "active", lastVisit: "2026-03-12" },
-  { id: "3", name: "Cooper", species: "dog", breed: "Golden Retriever", owner: "Jane Smith", status: "active", lastVisit: "2026-03-08" },
-  { id: "4", name: "Thunder", species: "horse", breed: "Quarter Horse", owner: "Mike O'Brien", status: "active", lastVisit: "2026-03-14" },
-  { id: "5", name: "Milo", species: "cat", breed: "Domestic Shorthair", owner: "Lisa Chen", status: "active", lastVisit: "2026-02-28" },
-];
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 
 const speciesEmoji: Record<string, string> = {
   dog: "🐕",
@@ -21,7 +14,83 @@ const speciesEmoji: Record<string, string> = {
   other: "🐾",
 };
 
-export default function PatientsPage() {
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "No visits";
+  return new Date(dateStr).toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+export default async function PatientsPage() {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // Get the practice IDs for this user
+  const { data: userPractices } = await supabase
+    .from("user_practices")
+    .select("practice_id")
+    .eq("user_id", user.id);
+
+  const practiceIds = (userPractices ?? []).map((up) => up.practice_id);
+
+  // Fetch patients with owner name, ordered by updated_at desc
+  // Also fetch the most recent consult_date per patient via a subquery approach
+  const { data: patients } = practiceIds.length
+    ? await supabase
+        .from("patients")
+        .select(
+          `
+          id,
+          name,
+          species,
+          breed,
+          status,
+          updated_at,
+          owner:clients!owner_id (
+            name
+          ),
+          consults (
+            consult_date
+          )
+        `
+        )
+        .in("practice_id", practiceIds)
+        .order("updated_at", { ascending: false })
+    : { data: [] };
+
+  // Resolve the most recent consult_date for each patient
+  const patientList = (patients ?? []).map((p) => {
+    const consults = (p.consults ?? []) as { consult_date: string }[];
+    const lastVisit =
+      consults.length > 0
+        ? consults.reduce((latest, c) =>
+            c.consult_date > latest.consult_date ? c : latest
+          ).consult_date
+        : null;
+
+    const ownerRaw = p.owner;
+    const owner = Array.isArray(ownerRaw) ? ownerRaw[0] : ownerRaw;
+
+    return {
+      id: p.id as string,
+      name: p.name as string,
+      species: p.species as string,
+      breed: (p.breed ?? "") as string,
+      ownerName: owner?.name ?? "Unknown Owner",
+      status: p.status as string,
+      lastVisit,
+    };
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -32,7 +101,7 @@ export default function PatientsPage() {
         </Button>
       </div>
 
-      {/* Search */}
+      {/* Search — will be wired up client-side */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -42,33 +111,43 @@ export default function PatientsPage() {
       </div>
 
       {/* Patient List */}
-      <div className="space-y-2">
-        {mockPatients.map((patient) => (
-          <Card key={patient.id} className="cursor-pointer hover:bg-accent/50 transition-colors">
-            <CardContent className="flex items-center gap-3 p-3">
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="text-lg">
-                  {speciesEmoji[patient.species]}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{patient.name}</span>
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                    {patient.species}
-                  </Badge>
+      {patientList.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-10">
+          No patients found. Add your first patient to get started.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {patientList.map((patient) => (
+            <Card
+              key={patient.id}
+              className="cursor-pointer hover:bg-accent/50 transition-colors"
+            >
+              <CardContent className="flex items-center gap-3 p-3">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback className="text-lg">
+                    {speciesEmoji[patient.species] ?? speciesEmoji.other}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{patient.name}</span>
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                      {patient.species}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {patient.breed ? `${patient.breed} · ` : ""}
+                    {patient.ownerName}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Last visit: {formatDate(patient.lastVisit)}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {patient.breed} · {patient.owner}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Last visit: {patient.lastVisit}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
