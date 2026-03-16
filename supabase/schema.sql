@@ -92,18 +92,19 @@ create table patients (
   updated_at timestamptz not null default now()
 );
 
--- Weight history
-create table patient_weights (
+-- BCS (Body Condition Score) history — replaces patient_weights
+create table patient_bcs (
   id uuid primary key default uuid_generate_v4(),
   patient_id uuid not null references patients(id) on delete cascade,
-  weight_kg numeric(7,2) not null,
-  recorded_at date not null default current_date,
+  score integer not null check (score between 1 and 9),  -- 1-9 BCS scale
+  assessed_by uuid references users(id),
   notes text,
+  recorded_at date not null default current_date,
   created_at timestamptz not null default now()
 );
 
 -- ============================================
--- APPOINTMENTS
+-- APPOINTMENTS (with embedded clinical notes)
 -- ============================================
 create table appointments (
   id uuid primary key default uuid_generate_v4(),
@@ -123,40 +124,31 @@ create table appointments (
   travel_time_minutes integer default 0,
   notes text,
   booked_by text not null default 'vet' check (booked_by in ('client', 'admin', 'vet')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
 
--- ============================================
--- CONSULTS (Clinical Records)
--- ============================================
-create table consults (
-  id uuid primary key default uuid_generate_v4(),
-  consult_date date not null, -- User-chosen date (NOT auto-set) — #1 IDEXX pain point fix
-  appointment_id uuid references appointments(id),
-  patient_id uuid not null references patients(id),
-  vet_id uuid not null references users(id),
-  practice_id uuid not null references practices(id),
+  -- Clinical note fields (merged from consults)
+  consult_date date,                    -- User-chosen date (can differ from appointment date for backdating)
   presenting_complaint text,
   history text,
   examination text,
   diagnosis text,
   treatment_plan text,
-  notes_transcript text,      -- VetScribe raw transcript
-  notes_ai_generated text,    -- VetScribe AI output
+  notes_transcript text,                -- VetScribe raw transcript
+  notes_ai_generated text,              -- VetScribe AI output
   template_used text,
-  status text not null default 'draft' check (status in ('draft', 'finalised')),
+  clinical_status text not null default 'none'
+    check (clinical_status in ('none', 'draft', 'finalised')),  -- 'none' means no notes yet
   finalised_at timestamptz,
   finalised_by uuid references users(id),
+  updated_by uuid references users(id),
+
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  updated_by uuid references users(id)
+  updated_at timestamptz not null default now()
 );
 
--- Consult addendums (for finalised consults)
-create table consult_addendums (
+-- Appointment addendums (for finalised clinical notes)
+create table appointment_addendums (
   id uuid primary key default uuid_generate_v4(),
-  consult_id uuid not null references consults(id) on delete cascade,
+  appointment_id uuid not null references appointments(id) on delete cascade,
   content text not null,
   added_by uuid not null references users(id),
   created_at timestamptz not null default now()
@@ -167,7 +159,7 @@ create table consult_addendums (
 -- ============================================
 create table prescriptions (
   id uuid primary key default uuid_generate_v4(),
-  consult_id uuid not null references consults(id),
+  appointment_id uuid not null references appointments(id),
   patient_id uuid not null references patients(id),
   medication text not null,
   dose text,
@@ -210,7 +202,7 @@ create table invoices (
     check (status in ('draft', 'sent', 'paid', 'partially_paid', 'overdue', 'void')),
   client_id uuid not null references clients(id),
   practice_id uuid not null references practices(id),
-  consult_id uuid references consults(id),
+  appointment_id uuid references appointments(id),
   performing_vet_id uuid references users(id),
   subtotal numeric(10,2) not null default 0,
   tax_amount numeric(10,2) not null default 0,
@@ -335,7 +327,7 @@ create table audit_logs (
 create table file_attachments (
   id uuid primary key default uuid_generate_v4(),
   patient_id uuid references patients(id),
-  consult_id uuid references consults(id),
+  appointment_id uuid references appointments(id),
   practice_id uuid not null references practices(id),
   file_name text not null,
   file_type text not null,
@@ -353,8 +345,10 @@ create index idx_patients_owner on patients(owner_id);
 create index idx_patients_search on patients using gin(to_tsvector('english', name));
 create index idx_appointments_date on appointments(date, practice_id);
 create index idx_appointments_vet on appointments(vet_id, date);
-create index idx_consults_patient on consults(patient_id);
-create index idx_consults_date on consults(consult_date, practice_id);
+create index idx_appointments_patient on appointments(patient_id);
+create index idx_appointments_clinical_status on appointments(clinical_status, practice_id);
+create index idx_appointment_addendums_appointment on appointment_addendums(appointment_id);
+create index idx_patient_bcs_patient on patient_bcs(patient_id);
 create index idx_invoices_client on invoices(client_id);
 create index idx_invoices_practice on invoices(practice_id, status);
 create index idx_audit_entity on audit_logs(entity_type, entity_id);
@@ -371,10 +365,9 @@ alter table user_practices enable row level security;
 alter table clients enable row level security;
 alter table client_practices enable row level security;
 alter table patients enable row level security;
-alter table patient_weights enable row level security;
+alter table patient_bcs enable row level security;
 alter table appointments enable row level security;
-alter table consults enable row level security;
-alter table consult_addendums enable row level security;
+alter table appointment_addendums enable row level security;
 alter table prescriptions enable row level security;
 alter table products enable row level security;
 alter table invoices enable row level security;
@@ -419,7 +412,10 @@ create policy "Users see practice patients" on patients for select
 create policy "Users manage practice patients" on patients for all
   using (practice_id = any(get_user_practice_ids()));
 
-create policy "Users see practice weights" on patient_weights for select
+create policy "Users see practice bcs" on patient_bcs for select
+  using (patient_id in (select id from patients where practice_id = any(get_user_practice_ids())));
+
+create policy "Users manage practice bcs" on patient_bcs for all
   using (patient_id in (select id from patients where practice_id = any(get_user_practice_ids())));
 
 create policy "Users see practice appointments" on appointments for select
@@ -428,11 +424,11 @@ create policy "Users see practice appointments" on appointments for select
 create policy "Users manage practice appointments" on appointments for all
   using (practice_id = any(get_user_practice_ids()));
 
-create policy "Users see practice consults" on consults for select
-  using (practice_id = any(get_user_practice_ids()));
+create policy "Users see practice appointment addendums" on appointment_addendums for select
+  using (appointment_id in (select id from appointments where practice_id = any(get_user_practice_ids())));
 
-create policy "Users manage practice consults" on consults for all
-  using (practice_id = any(get_user_practice_ids()));
+create policy "Users manage practice appointment addendums" on appointment_addendums for all
+  using (appointment_id in (select id from appointments where practice_id = any(get_user_practice_ids())));
 
 create policy "Users see practice invoices" on invoices for select
   using (practice_id = any(get_user_practice_ids()));
@@ -471,7 +467,6 @@ create trigger set_updated_at before update on users for each row execute functi
 create trigger set_updated_at before update on clients for each row execute function update_updated_at();
 create trigger set_updated_at before update on patients for each row execute function update_updated_at();
 create trigger set_updated_at before update on appointments for each row execute function update_updated_at();
-create trigger set_updated_at before update on consults for each row execute function update_updated_at();
 create trigger set_updated_at before update on products for each row execute function update_updated_at();
 create trigger set_updated_at before update on invoices for each row execute function update_updated_at();
 create trigger set_updated_at before update on care_package_enrollments for each row execute function update_updated_at();

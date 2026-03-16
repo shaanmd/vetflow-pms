@@ -22,7 +22,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   CalendarDays,
-  FileText,
   Receipt,
   LayoutDashboard,
   Package,
@@ -34,7 +33,6 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/patients", label: "Patients", icon: PawPrint },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/consults", label: "Consults", icon: FileText },
   { href: "/invoices", label: "Invoices", icon: Receipt },
   { href: "/products", label: "Products", icon: Package },
   { href: "/reports", label: "Reports", icon: BarChart3 },

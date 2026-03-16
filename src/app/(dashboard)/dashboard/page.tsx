@@ -2,12 +2,10 @@ import { redirect } from "next/navigation";
 import {
   CalendarDays,
   PawPrint,
-  FileText,
   Receipt,
   Clock,
   TrendingUp,
   Plus,
-  UserPlus,
   NotebookPen,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -89,7 +87,7 @@ function formatTime(time: string): string {
 
 const QUICK_ACTIONS = [
   { label: "New Appointment", icon: CalendarDays, href: "/appointments/new" },
-  { label: "New Consult", icon: NotebookPen, href: "/consults/new" },
+  { label: "Add Notes", icon: NotebookPen, href: "/calendar" },
   { label: "New Patient", icon: PawPrint, href: "/patients/new" },
   { label: "New Invoice", icon: Receipt, href: "/invoices/new" },
 ] as const;
@@ -169,10 +167,10 @@ export default async function DashboardPage() {
     activePatientCount = patientCount ?? 0;
 
     const { count: consultCount } = await supabase
-      .from("consults")
+      .from("appointments")
       .select("id", { count: "exact", head: true })
       .in("practice_id", practiceIds)
-      .eq("status", "draft");
+      .eq("clinical_status", "draft");
 
     draftConsultCount = consultCount ?? 0;
 
@@ -205,9 +203,9 @@ export default async function DashboardPage() {
       change: "across your practices",
     },
     {
-      label: "Pending Consults",
+      label: "Draft Notes",
       value: String(draftConsultCount),
-      icon: FileText,
+      icon: NotebookPen,
       change: "drafts",
     },
     {

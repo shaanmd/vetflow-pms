@@ -5,7 +5,6 @@ export type UserRole = "owner" | "clinic_owner" | "vet" | "admin" | "client" | "
 export type PatientSpecies = "dog" | "cat" | "horse" | "other";
 export type PatientStatus = "active" | "deceased" | "transferred";
 export type AppointmentStatus = "scheduled" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
-export type ConsultStatus = "draft" | "finalised";
 export type InvoiceStatus = "draft" | "sent" | "paid" | "partially_paid" | "overdue" | "void";
 export type LocationType = "clinic" | "house_call";
 
@@ -118,18 +117,8 @@ export interface Appointment {
   travel_time_minutes: number | null;
   notes: string | null;
   booked_by: "client" | "admin" | "vet";
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Consult {
-  id: string;
-  consult_date: string;
-  created_at: string;
-  appointment_id: string | null;
-  patient_id: string;
-  vet_id: string;
-  practice_id: string;
+  // Clinical note fields
+  consult_date: string | null;
   presenting_complaint: string | null;
   history: string | null;
   examination: string | null;
@@ -138,12 +127,14 @@ export interface Consult {
   notes_transcript: string | null;
   notes_ai_generated: string | null;
   template_used: string | null;
-  status: ConsultStatus;
+  clinical_status: "none" | "draft" | "finalised";
   finalised_at: string | null;
   finalised_by: string | null;
-  updated_at: string;
   updated_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
+
 
 export interface Invoice {
   id: string;
@@ -153,7 +144,7 @@ export interface Invoice {
   status: InvoiceStatus;
   client_id: string;
   practice_id: string;
-  consult_id: string | null;
+  appointment_id: string | null;
   performing_vet_id: string | null;
   subtotal: number;
   tax_amount: number;

@@ -35,16 +35,16 @@ DECLARE
   pat_willow uuid;
   pat_scout uuid;
   pat_storm uuid;
-  -- appointments
+  -- appointments (today)
   apt1 uuid;
   apt2 uuid;
   apt3 uuid;
   apt4 uuid;
-  -- consults
-  con1 uuid;
-  con2 uuid;
-  con3 uuid;
-  con4 uuid;
+  -- appointments (past, with clinical notes)
+  apt_cooper_wk6 uuid;
+  apt_bella_dental uuid;
+  apt_rocky_oa uuid;
+  apt_scout_dm uuid;
   -- invoices
   inv1 uuid;
   inv2 uuid;
@@ -161,19 +161,27 @@ INSERT INTO patients (id, name, species, breed, sex, dob, microchip, status, all
   (gen_random_uuid(), 'Scout', 'dog', 'Australian Cattle Dog', 'Male (neutered)', '2018-12-25', '900012345678909', 'active', '{}', '{"Degenerative myelopathy — early stage"}', client_jane, practice2_id) RETURNING id INTO pat_scout;
 
 -- ============================================
--- WEIGHT HISTORY
+-- BCS (Body Condition Score) HISTORY
 -- ============================================
-INSERT INTO patient_weights (patient_id, weight_kg, recorded_at, notes) VALUES
-  (pat_max, 38.5, '2025-12-01', 'Annual check'),
-  (pat_max, 37.8, '2026-01-15', 'Slight weight loss — increased exercise'),
-  (pat_max, 38.2, '2026-03-10', 'Stable'),
-  (pat_cooper, 32.1, '2025-11-20', 'Pre-surgery weight'),
-  (pat_cooper, 30.5, '2026-01-10', 'Post-surgery — some muscle loss'),
-  (pat_cooper, 31.8, '2026-02-15', 'Rehab progressing well'),
-  (pat_cooper, 32.4, '2026-03-08', 'Near pre-surgery weight'),
-  (pat_milo, 4.8, '2026-01-15', 'Healthy weight'),
-  (pat_luna, 18.2, '2026-02-01', 'Post-surgery'),
-  (pat_luna, 18.5, '2026-03-01', 'Gaining muscle');
+-- Scale: 1–9, where 5 is ideal
+INSERT INTO patient_bcs (patient_id, bcs, assessed_at, assessed_by) VALUES
+  -- Max (German Shepherd) — well maintained
+  (pat_max, 5, '2025-12-01', owner_id),
+  (pat_max, 5, '2026-01-15', owner_id),
+  (pat_max, 5, '2026-03-10', owner_id),
+  -- Cooper (Golden Retriever) — post-TPLO recovery
+  (pat_cooper, 6, '2025-11-20', owner_id),
+  (pat_cooper, 5, '2026-01-10', owner_id),
+  (pat_cooper, 5, '2026-03-08', owner_id),
+  -- Milo (cat) — healthy
+  (pat_milo, 5, '2026-01-15', owner_id),
+  -- Luna (Border Collie) — post-surgery, gaining condition
+  (pat_luna, 4, '2026-02-01', owner_id),
+  (pat_luna, 5, '2026-03-01', owner_id),
+  -- Rocky (Labrador) — overweight OA, improving with diet
+  (pat_rocky, 7, '2025-11-01', owner_id),
+  (pat_rocky, 7, '2026-01-10', owner_id),
+  (pat_rocky, 6, '2026-03-05', owner_id);
 
 -- ============================================
 -- PRODUCTS / SERVICES — Sunrise Mobile Vet
@@ -204,119 +212,153 @@ INSERT INTO products (name, description, type, category, practice_id, price, tax
   ('Hydrotherapy Session', '45-min underwater treadmill session', 'service', 'rehab', practice2_id, 95.00, 10.00);
 
 -- ============================================
--- APPOINTMENTS — Today and recent
+-- APPOINTMENTS — Today (confirmed/scheduled)
 -- ============================================
-INSERT INTO appointments (id, date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes, notes) VALUES
+INSERT INTO appointments (id, date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes, notes, clinical_status) VALUES
   (gen_random_uuid(), CURRENT_DATE, '09:00', '09:45', 45, 'confirmed', 'rehab-followup',
    pat_cooper, client_jane, owner_id, practice2_id, 'clinic', NULL, 0,
-   'Post-TPLO follow-up — week 8. Check ROM and muscle mass.') RETURNING id INTO apt1;
+   'Post-TPLO follow-up — week 8. Check ROM and muscle mass.', 'none') RETURNING id INTO apt1;
 
-INSERT INTO appointments (id, date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes, notes) VALUES
+INSERT INTO appointments (id, date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes, notes, clinical_status) VALUES
   (gen_random_uuid(), CURRENT_DATE, '10:30', '11:30', 60, 'scheduled', 'equine-dental',
    pat_bella, client_tom, owner_id, practice1_id, 'house_call', 'Sunshine Stables, 220 Range Rd, Highfields QLD 4352', 30,
-   'Annual dental check and float') RETURNING id INTO apt2;
+   'Annual dental check and float', 'none') RETURNING id INTO apt2;
 
-INSERT INTO appointments (id, date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes, notes) VALUES
+INSERT INTO appointments (id, date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes, notes, clinical_status) VALUES
   (gen_random_uuid(), CURRENT_DATE, '13:00', '14:30', 90, 'confirmed', 'rehab-initial',
    pat_luna, client_emma, owner_id, practice2_id, 'clinic', NULL, 0,
-   'Initial rehab assessment — IVDD post-surgery, 6 weeks post-op') RETURNING id INTO apt3;
+   'Initial rehab assessment — IVDD post-surgery, 6 weeks post-op', 'none') RETURNING id INTO apt3;
 
-INSERT INTO appointments (id, date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes, notes) VALUES
+INSERT INTO appointments (id, date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes, notes, clinical_status) VALUES
   (gen_random_uuid(), CURRENT_DATE, '15:30', '16:30', 60, 'scheduled', 'equine-biomech',
    pat_thunder, client_mike, owner_id, practice1_id, 'house_call', 'Willowdale Farm, 85 Creek Rd, Cabarlah QLD 4352', 30,
-   'Follow-up biomechanical assessment — navicular management') RETURNING id INTO apt4;
+   'Follow-up biomechanical assessment — navicular management', 'none') RETURNING id INTO apt4;
 
--- Future appointments
-INSERT INTO appointments (date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes, notes) VALUES
+-- ============================================
+-- APPOINTMENTS — Future (scheduled)
+-- ============================================
+INSERT INTO appointments (date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes, notes, clinical_status) VALUES
   (CURRENT_DATE + 1, '09:00', '09:30', 30, 'scheduled', 'consult',
    pat_max, client_sarah, owner_id, practice1_id, 'house_call', '18 Maple St, Toowoomba QLD 4350', 15,
-   'Hip dysplasia check — review current management plan'),
+   'Hip dysplasia check — review current management plan', 'none'),
   (CURRENT_DATE + 1, '10:30', '11:15', 45, 'scheduled', 'rehab-followup',
    pat_willow, client_sarah, owner_id, practice2_id, 'clinic', NULL, 0,
-   'Patella luxation rehab — session 4 of 6'),
+   'Patella luxation rehab — session 4 of 6', 'none'),
   (CURRENT_DATE + 2, '09:00', '09:20', 20, 'scheduled', 'vaccination',
    pat_milo, client_lisa, owner_id, practice1_id, 'house_call', '3/22 Russell St, Toowoomba QLD 4350', 15,
-   'Annual F3 vaccination'),
+   'Annual F3 vaccination', 'none'),
   (CURRENT_DATE + 3, '14:00', '15:00', 60, 'scheduled', 'equine-biomech',
    pat_storm, client_rachel, owner_id, practice1_id, 'house_call', 'Greenhill Equestrian, 310 New England Hwy, Highfields QLD 4352', 30,
-   'Lameness re-evaluation — 4 weeks post shoeing change');
+   'Lameness re-evaluation — 4 weeks post shoeing change', 'none');
 
--- Past appointments (completed)
-INSERT INTO appointments (date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes) VALUES
-  (CURRENT_DATE - 2, '09:00', '09:45', 45, 'completed', 'rehab-followup',
-   pat_cooper, client_jane, owner_id, practice2_id, 'clinic', NULL, 0),
-  (CURRENT_DATE - 3, '10:00', '11:00', 60, 'completed', 'equine-dental',
-   pat_bella, client_tom, owner_id, practice1_id, 'house_call', 'Sunshine Stables, 220 Range Rd, Highfields QLD 4352', 30),
-  (CURRENT_DATE - 5, '13:00', '13:30', 30, 'completed', 'consult',
-   pat_rocky, client_david, owner_id, practice1_id, 'house_call', '45 Spring St, Toowoomba QLD 4350', 15),
-  (CURRENT_DATE - 7, '09:30', '10:15', 45, 'completed', 'rehab-followup',
-   pat_scout, client_jane, owner_id, practice2_id, 'clinic', NULL, 0),
+-- ============================================
+-- APPOINTMENTS — Past (completed, with clinical notes)
+-- ============================================
+
+-- Cooper rehab follow-up — week 6 (finalised)
+INSERT INTO appointments (
+  id, date, start_time, end_time, duration_minutes, status, appointment_type_id,
+  patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes,
+  consult_date, presenting_complaint, history, examination, diagnosis, treatment_plan,
+  template_used, clinical_status, finalised_at, finalised_by, updated_by
+) VALUES (
+  gen_random_uuid(),
+  CURRENT_DATE - 2, '09:00', '09:45', 45, 'completed', 'rehab-followup',
+  pat_cooper, client_jane, owner_id, practice2_id, 'clinic', NULL, 0,
+  CURRENT_DATE - 2,
+  'Post-TPLO rehabilitation — week 6 follow-up',
+  'Cooper underwent right stifle TPLO surgery 6 weeks ago. Has been on restricted activity with controlled leash walks (10 min, 3x daily). Owner reports Cooper is weight-bearing well and keen to be more active.',
+  'BCS 5/9. Gait: mild intermittent lameness R hind at trot, sound at walk. Stifle: no drawer, no effusion, mild periarticular thickening. ROM: flexion 42° (prev 38°), extension 155° (prev 148°). Muscle mass: R thigh 38cm (prev 36.5cm), L thigh 41cm. Pain score: 1/5 on palpation.',
+  'Post-TPLO right stifle — progressing well. ROM improving. Muscle atrophy reducing.',
+  'Continue controlled leash walks, increase to 15 min 3x daily. Begin gentle hill walking. Start sit-to-stand exercises (3 sets of 5, twice daily). Continue 4CYTE joint supplement. Hydrotherapy weekly. Review in 2 weeks.',
+  'Rehab Assessment', 'finalised', now() - interval '2 days', owner_id, owner_id
+) RETURNING id INTO apt_cooper_wk6;
+
+-- Bella equine dental (finalised)
+INSERT INTO appointments (
+  id, date, start_time, end_time, duration_minutes, status, appointment_type_id,
+  patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes,
+  consult_date, presenting_complaint, history, examination, diagnosis, treatment_plan,
+  template_used, clinical_status, finalised_at, finalised_by, updated_by
+) VALUES (
+  gen_random_uuid(),
+  CURRENT_DATE - 3, '10:00', '11:00', 60, 'completed', 'equine-dental',
+  pat_bella, client_tom, owner_id, practice1_id, 'house_call', 'Sunshine Stables, 220 Range Rd, Highfields QLD 4352', 30,
+  CURRENT_DATE - 3,
+  'Annual dental examination and float',
+  'Bella is a 7yo Thoroughbred mare. Last dental was 14 months ago. Owner reports no issues with eating but has noticed some quidding (dropping feed) in the last 2 weeks.',
+  'Oral exam under sedation (detomidine 0.01mg/kg IV). Sharp enamel points on buccal edges of upper arcades (106-111) and lingual edges of lower arcades (306-311). Moderate hooks on 106 and 206. No loose teeth, no periodontal pockets. Wolf teeth previously removed.',
+  'Sharp enamel points with moderate hooks — consistent with 14-month interval. Quidding explained by buccal ulceration from 106 hook.',
+  'Full mouth float performed. Hooks reduced on 106 and 206. Buccal ulcer on L cheek will resolve spontaneously. Recommend 12-month dental interval. Soft feed for 48 hours post-procedure.',
+  'Equine Dental', 'finalised', now() - interval '3 days', owner_id, owner_id
+) RETURNING id INTO apt_bella_dental;
+
+-- Rocky OA review (finalised)
+INSERT INTO appointments (
+  id, date, start_time, end_time, duration_minutes, status, appointment_type_id,
+  patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes,
+  consult_date, presenting_complaint, history, examination, diagnosis, treatment_plan,
+  template_used, clinical_status, finalised_at, finalised_by, updated_by
+) VALUES (
+  gen_random_uuid(),
+  CURRENT_DATE - 5, '13:00', '13:30', 30, 'completed', 'consult',
+  pat_rocky, client_david, owner_id, practice1_id, 'house_call', '45 Spring St, Toowoomba QLD 4350', 15,
+  CURRENT_DATE - 5,
+  'Osteoarthritis review — bilateral stifles',
+  'Rocky is a 6yo male Labrador with bilateral stifle OA diagnosed 18 months ago. Currently on meloxicam 0.1mg/kg SID and 4CYTE. Owner reports Rocky is comfortable on flat walks but stiff after longer weekend hikes.',
+  'BCS 7/9 (target BCS 5 — overweight). Gait: short-strided hind, bilateral. Stifles: mild bilateral effusion, crepitus on flexion/extension. ROM: flexion 40° bilat, extension 155° bilat. Muscle mass adequate. Pain: 2/5 on deep palpation.',
+  'Bilateral stifle osteoarthritis — stable. Mildly overweight contributing to loading.',
+  'Continue meloxicam and 4CYTE. Weight reduction plan: reduce kibble by 10%, switch to weight management diet. Limit hikes to 30 min on flat terrain. Consider starting hydrotherapy for low-impact exercise. Review in 6 weeks with BCS check.',
+  'SOAP Note', 'finalised', now() - interval '5 days', owner_id, owner_id
+) RETURNING id INTO apt_rocky_oa;
+
+-- Scout DM progress check (draft — not yet finalised)
+INSERT INTO appointments (
+  id, date, start_time, end_time, duration_minutes, status, appointment_type_id,
+  patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes,
+  consult_date, presenting_complaint, history, examination, diagnosis, treatment_plan,
+  template_used, clinical_status, updated_by
+) VALUES (
+  gen_random_uuid(),
+  CURRENT_DATE - 7, '09:30', '10:15', 45, 'completed', 'rehab-followup',
+  pat_scout, client_jane, owner_id, practice2_id, 'clinic', NULL, 0,
+  CURRENT_DATE - 7,
+  'Degenerative myelopathy — rehab progress check',
+  'Scout is a 7yo ACD with early-stage degenerative myelopathy diagnosed 3 months ago. On a home exercise program including daily proprioception exercises and controlled walks.',
+  'Gait: mild ataxia hind limbs, crossing over at walk intermittently. Proprioception: delayed correction both hind, L worse than R. Muscle mass: hind limbs mildly reduced. No pain on spinal palpation.',
+  'Degenerative myelopathy — early stage, slowly progressive. Proprioception declining.',
+  NULL,
+  'Rehab Assessment', 'draft', owner_id
+) RETURNING id INTO apt_scout_dm;
+
+-- Cancelled appointment (no clinical notes)
+INSERT INTO appointments (date, start_time, end_time, duration_minutes, status, appointment_type_id, patient_id, client_id, vet_id, practice_id, location_type, location_address, travel_time_minutes, clinical_status) VALUES
   (CURRENT_DATE - 1, '14:00', '14:30', 30, 'cancelled', 'consult',
-   pat_milo, client_lisa, owner_id, practice1_id, 'house_call', '3/22 Russell St, Toowoomba QLD 4350', 15);
+   pat_milo, client_lisa, owner_id, practice1_id, 'house_call', '3/22 Russell St, Toowoomba QLD 4350', 15, 'none');
 
 -- ============================================
--- CONSULTS
+-- APPOINTMENT ADDENDUM
 -- ============================================
-INSERT INTO consults (id, consult_date, appointment_id, patient_id, vet_id, practice_id, presenting_complaint, history, examination, diagnosis, treatment_plan, template_used, status, finalised_at, finalised_by) VALUES
-  (gen_random_uuid(), CURRENT_DATE - 2, apt1, pat_cooper, owner_id, practice2_id,
-   'Post-TPLO rehabilitation — week 6 follow-up',
-   'Cooper underwent right stifle TPLO surgery 6 weeks ago. Has been on restricted activity with controlled leash walks (10 min, 3x daily). Owner reports Cooper is weight-bearing well and keen to be more active.',
-   'Weight: 31.8kg. Gait: mild intermittent lameness R hind at trot, sound at walk. Stifle: no drawer, no effusion, mild periarticular thickening. ROM: flexion 42° (prev 38°), extension 155° (prev 148°). Muscle mass: R thigh 38cm (prev 36.5cm), L thigh 41cm. Pain score: 1/5 on palpation.',
-   'Post-TPLO right stifle — progressing well. ROM improving. Muscle atrophy reducing.',
-   'Continue controlled leash walks, increase to 15 min 3x daily. Begin gentle hill walking. Start sit-to-stand exercises (3 sets of 5, twice daily). Continue 4CYTE joint supplement. Hydrotherapy weekly. Review in 2 weeks.',
-   'Rehab Assessment', 'finalised', now() - interval '2 days', owner_id) RETURNING id INTO con1;
-
-INSERT INTO consults (id, consult_date, patient_id, vet_id, practice_id, presenting_complaint, history, examination, diagnosis, treatment_plan, template_used, status, finalised_at, finalised_by) VALUES
-  (gen_random_uuid(), CURRENT_DATE - 3, pat_bella, owner_id, practice1_id,
-   'Annual dental examination and float',
-   'Bella is a 7yo Thoroughbred mare. Last dental was 14 months ago. Owner reports no issues with eating but has noticed some quidding (dropping feed) in the last 2 weeks.',
-   'Oral exam under sedation (detomidine 0.01mg/kg IV). Sharp enamel points on buccal edges of upper arcades (106-111) and lingual edges of lower arcades (306-311). Moderate hooks on 106 and 206. No loose teeth, no periodontal pockets. Wolf teeth previously removed.',
-   'Sharp enamel points with moderate hooks — consistent with 14-month interval. Quidding explained by buccal ulceration from 106 hook.',
-   'Full mouth float performed. Hooks reduced on 106 and 206. Buccal ulcer on L cheek will resolve spontaneously. Recommend 12-month dental interval. Soft feed for 48 hours post-procedure.',
-   'Equine Dental', 'finalised', now() - interval '3 days', owner_id) RETURNING id INTO con2;
-
-INSERT INTO consults (id, consult_date, patient_id, vet_id, practice_id, presenting_complaint, history, examination, diagnosis, treatment_plan, template_used, status, finalised_at, finalised_by) VALUES
-  (gen_random_uuid(), CURRENT_DATE - 5, pat_rocky, owner_id, practice1_id,
-   'Osteoarthritis review — bilateral stifles',
-   'Rocky is a 6yo male Labrador with bilateral stifle OA diagnosed 18 months ago. Currently on meloxicam 0.1mg/kg SID and 4CYTE. Owner reports Rocky is comfortable on flat walks but stiff after longer weekend hikes.',
-   'Weight: 34.2kg (target 32kg — mildly overweight). Gait: short-strided hind, bilateral. Stifles: mild bilateral effusion, crepitus on flexion/extension. ROM: flexion 40° bilat, extension 155° bilat. Muscle mass adequate. Pain: 2/5 on deep palpation.',
-   'Bilateral stifle osteoarthritis — stable. Mildly overweight contributing to loading.',
-   'Continue meloxicam and 4CYTE. Weight reduction plan: reduce kibble by 10%, switch to weight management diet. Limit hikes to 30 min on flat terrain. Consider starting hydrotherapy for low-impact exercise. Review in 6 weeks with weight check.',
-   'SOAP Note', 'finalised', now() - interval '5 days', owner_id) RETURNING id INTO con3;
-
--- Draft consult (not yet finalised)
-INSERT INTO consults (id, consult_date, patient_id, vet_id, practice_id, presenting_complaint, history, examination, diagnosis, treatment_plan, template_used, status) VALUES
-  (gen_random_uuid(), CURRENT_DATE - 7, pat_scout, owner_id, practice2_id,
-   'Degenerative myelopathy — rehab progress check',
-   'Scout is a 7yo ACD with early-stage degenerative myelopathy diagnosed 3 months ago. On a home exercise program including daily proprioception exercises and controlled walks.',
-   'Gait: mild ataxia hind limbs, crossing over at walk intermittently. Proprioception: delayed correction both hind, L worse than R. Muscle mass: hind limbs mildly reduced. No pain on spinal palpation.',
-   'Degenerative myelopathy — early stage, slowly progressive. Proprioception declining.',
-   NULL,
-   'Rehab Assessment', 'draft') RETURNING id INTO con4;
-
--- ============================================
--- CONSULT ADDENDUM
--- ============================================
-INSERT INTO consult_addendums (consult_id, content, added_by) VALUES
-  (con3, 'Owner called — Rocky tolerating diet change well. Has lost 0.3kg in first 2 weeks. Continuing as planned.', owner_id);
+INSERT INTO appointment_addendums (appointment_id, content, added_by) VALUES
+  (apt_rocky_oa, 'Owner called — Rocky tolerating diet change well. Has lost 0.3kg in first 2 weeks. Continuing as planned.', owner_id);
 
 -- ============================================
 -- PRESCRIPTIONS
 -- ============================================
-INSERT INTO prescriptions (consult_id, patient_id, medication, dose, frequency, duration, quantity, instructions, dispensed, dispensed_date) VALUES
-  (con3, pat_rocky, 'Meloxicam 1.5mg/ml oral suspension', '0.1mg/kg (3.4ml)', 'Once daily with food', 'Ongoing', '100ml bottle', 'Give with food. Do not use with other NSAIDs or corticosteroids. Monitor for GI signs.', true, CURRENT_DATE - 5),
-  (con3, pat_rocky, '4CYTE Canine Joint Support', '1 scoop (4g)', 'Once daily', 'Ongoing', '100g tub', 'Sprinkle on food. Loading dose: double for first 4 weeks.', true, CURRENT_DATE - 5),
-  (con1, pat_cooper, '4CYTE Canine Joint Support', '1 scoop (4g)', 'Once daily', 'Ongoing', '100g tub', 'Continue as maintenance.', true, CURRENT_DATE - 2);
+INSERT INTO prescriptions (appointment_id, patient_id, medication, dose, frequency, duration, quantity, instructions, dispensed, dispensed_date) VALUES
+  (apt_rocky_oa, pat_rocky, 'Meloxicam 1.5mg/ml oral suspension', '0.1mg/kg (3.4ml)', 'Once daily with food', 'Ongoing', '100ml bottle', 'Give with food. Do not use with other NSAIDs or corticosteroids. Monitor for GI signs.', true, CURRENT_DATE - 5),
+  (apt_rocky_oa, pat_rocky, '4CYTE Canine Joint Support', '1 scoop (4g)', 'Once daily', 'Ongoing', '100g tub', 'Sprinkle on food. Loading dose: double for first 4 weeks.', true, CURRENT_DATE - 5),
+  (apt_cooper_wk6, pat_cooper, '4CYTE Canine Joint Support', '1 scoop (4g)', 'Once daily', 'Ongoing', '100g tub', 'Continue as maintenance.', true, CURRENT_DATE - 2);
 
 -- ============================================
 -- INVOICES
 -- ============================================
-INSERT INTO invoices (id, invoice_number, date, due_date, status, client_id, practice_id, consult_id, performing_vet_id, subtotal, tax_amount, total, paid_at) VALUES
-  (gen_random_uuid(), 'SM-0042', CURRENT_DATE - 3, CURRENT_DATE + 11, 'paid', client_tom, practice1_id, con2, owner_id, 350.00, 35.00, 385.00, now() - interval '3 days') RETURNING id INTO inv1;
-INSERT INTO invoices (id, invoice_number, date, due_date, status, client_id, practice_id, consult_id, performing_vet_id, subtotal, tax_amount, total) VALUES
-  (gen_random_uuid(), 'SR-0018', CURRENT_DATE - 2, CURRENT_DATE + 12, 'sent', client_jane, practice2_id, con1, owner_id, 198.00, 19.80, 217.80) RETURNING id INTO inv2;
-INSERT INTO invoices (id, invoice_number, date, due_date, status, client_id, practice_id, consult_id, performing_vet_id, subtotal, tax_amount, total, paid_at) VALUES
-  (gen_random_uuid(), 'SM-0041', CURRENT_DATE - 5, CURRENT_DATE + 9, 'paid', client_david, practice1_id, con3, owner_id, 233.00, 23.30, 256.30, now() - interval '4 days') RETURNING id INTO inv3;
+INSERT INTO invoices (id, invoice_number, date, due_date, status, client_id, practice_id, appointment_id, performing_vet_id, subtotal, tax_amount, total, paid_at) VALUES
+  (gen_random_uuid(), 'SM-0042', CURRENT_DATE - 3, CURRENT_DATE + 11, 'paid', client_tom, practice1_id, apt_bella_dental, owner_id, 350.00, 35.00, 385.00, now() - interval '3 days') RETURNING id INTO inv1;
+INSERT INTO invoices (id, invoice_number, date, due_date, status, client_id, practice_id, appointment_id, performing_vet_id, subtotal, tax_amount, total) VALUES
+  (gen_random_uuid(), 'SR-0018', CURRENT_DATE - 2, CURRENT_DATE + 12, 'sent', client_jane, practice2_id, apt_cooper_wk6, owner_id, 198.00, 19.80, 217.80) RETURNING id INTO inv2;
+INSERT INTO invoices (id, invoice_number, date, due_date, status, client_id, practice_id, appointment_id, performing_vet_id, subtotal, tax_amount, total, paid_at) VALUES
+  (gen_random_uuid(), 'SM-0041', CURRENT_DATE - 5, CURRENT_DATE + 9, 'paid', client_david, practice1_id, apt_rocky_oa, owner_id, 233.00, 23.30, 256.30, now() - interval '4 days') RETURNING id INTO inv3;
 INSERT INTO invoices (id, invoice_number, date, due_date, status, client_id, practice_id, performing_vet_id, subtotal, tax_amount, total) VALUES
   (gen_random_uuid(), 'SM-0040', CURRENT_DATE - 14, CURRENT_DATE - 1, 'overdue', client_mike, practice1_id, owner_id, 280.00, 28.00, 308.00) RETURNING id INTO inv4;
 INSERT INTO invoices (id, invoice_number, date, due_date, status, client_id, practice_id, performing_vet_id, subtotal, tax_amount, total) VALUES
@@ -357,10 +399,10 @@ INSERT INTO communication_logs (client_id, practice_id, type, direction, subject
 -- AUDIT LOG (sample entries)
 -- ============================================
 INSERT INTO audit_logs (user_id, practice_id, entity_type, entity_id, action, changes) VALUES
-  (owner_id, practice2_id, 'consult', con1, 'create', '{"status": {"old": null, "new": "draft"}}'),
-  (owner_id, practice2_id, 'consult', con1, 'finalise', '{"status": {"old": "draft", "new": "finalised"}}'),
-  (owner_id, practice1_id, 'consult', con2, 'create', '{"status": {"old": null, "new": "draft"}}'),
-  (owner_id, practice1_id, 'consult', con2, 'finalise', '{"status": {"old": "draft", "new": "finalised"}}'),
+  (owner_id, practice2_id, 'appointment', apt_cooper_wk6, 'create', '{"clinical_status": {"old": null, "new": "draft"}}'),
+  (owner_id, practice2_id, 'appointment', apt_cooper_wk6, 'finalise', '{"clinical_status": {"old": "draft", "new": "finalised"}}'),
+  (owner_id, practice1_id, 'appointment', apt_bella_dental, 'create', '{"clinical_status": {"old": null, "new": "draft"}}'),
+  (owner_id, practice1_id, 'appointment', apt_bella_dental, 'finalise', '{"clinical_status": {"old": "draft", "new": "finalised"}}'),
   (owner_id, practice1_id, 'invoice', inv1, 'create', '{"status": {"old": null, "new": "draft"}}'),
   (owner_id, practice1_id, 'invoice', inv4, 'update', '{"status": {"old": "sent", "new": "overdue"}}');
 

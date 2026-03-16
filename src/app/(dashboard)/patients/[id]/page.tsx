@@ -2,13 +2,11 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import {
   AlertTriangle,
+  Activity,
   Calendar,
   ChevronRight,
   ClipboardList,
   FileText,
-  Scale,
-  TrendingDown,
-  TrendingUp,
   User,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -117,20 +115,21 @@ export default async function PatientDetailPage({
   if (!practiceAccess) notFound();
 
   // Parallel fetches
-  const [weightsResult, consultsResult, filesResult] = await Promise.all([
+  const [bcsResult, appointmentsWithNotesResult, filesResult] = await Promise.all([
     supabase
-      .from("patient_weights")
-      .select("id, weight_kg, recorded_at, notes")
+      .from("patient_bcs")
+      .select("id, bcs_score, assessed_at, notes")
       .eq("patient_id", id)
-      .order("recorded_at", { ascending: false }),
+      .order("assessed_at", { ascending: false }),
 
     supabase
-      .from("consults")
+      .from("appointments")
       .select(
-        "id, consult_date, template_used, status, presenting_complaint"
+        "id, date, template_used, clinical_status, presenting_complaint"
       )
       .eq("patient_id", id)
-      .order("consult_date", { ascending: false })
+      .neq("clinical_status", "none")
+      .order("date", { ascending: false })
       .order("created_at", { ascending: false }),
 
     supabase
@@ -140,15 +139,15 @@ export default async function PatientDetailPage({
       .order("created_at", { ascending: false }),
   ]);
 
-  const weights = weightsResult.data ?? [];
-  const consults = consultsResult.data ?? [];
+  const bcsRecords = bcsResult.data ?? [];
+  const appointmentsWithNotes = appointmentsWithNotesResult.data ?? [];
   const files = filesResult.data ?? [];
 
   // Resolve owner (Supabase may return array or object)
   const ownerRaw = patient.owner;
   const owner = Array.isArray(ownerRaw) ? ownerRaw[0] : ownerRaw;
 
-  const latestWeight = weights.length > 0 ? weights[0] : null;
+  const latestBcs = bcsRecords.length > 0 ? bcsRecords[0] : null;
   const allergies: string[] = (patient.allergies as string[] | null) ?? [];
   const conditions: string[] = (patient.conditions as string[] | null) ?? [];
 
@@ -238,17 +237,15 @@ export default async function PatientDetailPage({
             <Card size="sm">
               <CardContent className="flex flex-col gap-1 p-3">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Scale className="h-3.5 w-3.5" />
-                  Weight
+                  <Activity className="h-3.5 w-3.5" />
+                  Latest BCS
                 </div>
                 <p className="text-lg font-semibold leading-none">
-                  {latestWeight
-                    ? `${latestWeight.weight_kg} kg`
-                    : "—"}
+                  {latestBcs ? `${latestBcs.bcs_score}/9` : "—"}
                 </p>
-                {latestWeight && (
+                {latestBcs && (
                   <p className="text-[10px] text-muted-foreground">
-                    {fmtDate(latestWeight.recorded_at)}
+                    {fmtDate(latestBcs.assessed_at)}
                   </p>
                 )}
               </CardContent>
@@ -258,14 +255,14 @@ export default async function PatientDetailPage({
               <CardContent className="flex flex-col gap-1 p-3">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <ClipboardList className="h-3.5 w-3.5" />
-                  Consults
+                  Clinical Notes
                 </div>
                 <p className="text-lg font-semibold leading-none">
-                  {consults.length}
+                  {appointmentsWithNotes.length}
                 </p>
-                {consults.length > 0 && (
+                {appointmentsWithNotes.length > 0 && (
                   <p className="text-[10px] text-muted-foreground">
-                    Last: {fmtDate(consults[0].consult_date)}
+                    Last: {fmtDate(appointmentsWithNotes[0].date)}
                   </p>
                 )}
               </CardContent>
@@ -293,14 +290,14 @@ export default async function PatientDetailPage({
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              {consults.length === 0 ? (
+              {appointmentsWithNotes.length === 0 ? (
                 <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  No consults recorded yet.
+                  No clinical notes recorded yet.
                 </p>
               ) : (
                 <ul className="divide-y">
-                  {consults.map((consult) => {
-                    const complaint = consult.presenting_complaint as
+                  {appointmentsWithNotes.map((appt) => {
+                    const complaint = appt.presenting_complaint as
                       | string
                       | null;
                     const preview = complaint
@@ -308,19 +305,19 @@ export default async function PatientDetailPage({
                         ? complaint.slice(0, 100) + "…"
                         : complaint
                       : null;
-                    const status = (consult.status as string) ?? "draft";
-                    const template = consult.template_used as string | null;
+                    const status = (appt.clinical_status as string) ?? "draft";
+                    const template = appt.template_used as string | null;
 
                     return (
-                      <li key={consult.id}>
+                      <li key={appt.id}>
                         <Link
-                          href={`/consults/${consult.id}`}
+                          href={`/calendar?appointment=${appt.id}`}
                           className="flex min-h-[56px] items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50 active:bg-accent"
                         >
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-sm font-medium">
-                                {fmtDate(consult.consult_date as string | null)}
+                                {fmtDate(appt.date as string | null)}
                               </span>
                               {template && (
                                 <span className="text-xs text-muted-foreground">
@@ -368,21 +365,21 @@ export default async function PatientDetailPage({
 
         {/* ── Sidebar (desktop only) ──────────────────────────────────── */}
         <div className="hidden lg:flex lg:flex-col lg:gap-4">
-          {/* Weight History */}
+          {/* BCS History */}
           <Card>
             <CardHeader className="border-b">
               <CardTitle className="flex items-center gap-2">
-                <Scale className="h-4 w-4" />
-                Weight History
+                <Activity className="h-4 w-4" />
+                BCS History
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              {weights.length === 0 ? (
+              {bcsRecords.length === 0 ? (
                 <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  No weight records.
+                  No BCS records.
                 </p>
               ) : (
-                <WeightList weights={weights} />
+                <BcsList bcsRecords={bcsRecords} />
               )}
             </CardContent>
           </Card>
@@ -404,21 +401,21 @@ export default async function PatientDetailPage({
         </div>
       </div>
 
-      {/* Weight History — mobile only (below main content) */}
+      {/* BCS History — mobile only (below main content) */}
       <Card className="lg:hidden">
         <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2">
-            <Scale className="h-4 w-4" />
-            Weight History
+            <Activity className="h-4 w-4" />
+            BCS History
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {weights.length === 0 ? (
+          {bcsRecords.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-              No weight records.
+              No BCS records.
             </p>
           ) : (
-            <WeightList weights={weights} />
+            <BcsList bcsRecords={bcsRecords} />
           )}
         </CardContent>
       </Card>
@@ -428,56 +425,53 @@ export default async function PatientDetailPage({
 
 // ─── sub-components ──────────────────────────────────────────────────────────
 
-type WeightRow = {
+type BcsRow = {
   id: string;
-  weight_kg: number;
-  recorded_at: string;
+  bcs_score: number;
+  assessed_at: string;
   notes: string | null;
 };
 
-function WeightList({ weights }: { weights: WeightRow[] }) {
+function bcsColour(score: number): string {
+  if (score < 4) return "text-red-600 dark:text-red-400";
+  if (score === 4) return "text-amber-600 dark:text-amber-400";
+  if (score === 5) return "text-green-600 dark:text-green-400";
+  if (score === 6) return "text-amber-600 dark:text-amber-400";
+  return "text-red-600 dark:text-red-400";
+}
+
+function bcsDotColour(score: number): string {
+  if (score < 4) return "bg-red-500";
+  if (score === 4) return "bg-amber-500";
+  if (score === 5) return "bg-green-500";
+  if (score === 6) return "bg-amber-500";
+  return "bg-red-500";
+}
+
+function BcsList({ bcsRecords }: { bcsRecords: BcsRow[] }) {
   return (
     <ul className="divide-y">
-      {weights.map((w, idx) => {
-        const prev = weights[idx + 1];
-        const delta = prev ? w.weight_kg - prev.weight_kg : null;
-        const deltaAbs = delta !== null ? Math.abs(delta) : null;
-
-        return (
-          <li key={w.id} className="flex items-start gap-3 px-4 py-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{w.weight_kg} kg</span>
-                {delta !== null && deltaAbs !== null && deltaAbs > 0 && (
-                  <span
-                    className={`flex items-center gap-0.5 text-xs font-medium ${
-                      delta > 0
-                        ? "text-green-600 dark:text-green-400"
-                        : "text-red-600 dark:text-red-400"
-                    }`}
-                  >
-                    {delta > 0 ? (
-                      <TrendingUp className="h-3 w-3" />
-                    ) : (
-                      <TrendingDown className="h-3 w-3" />
-                    )}
-                    {delta > 0 ? "+" : ""}
-                    {delta.toFixed(2)}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {fmtDate(w.recorded_at)}
-              </p>
-              {w.notes && (
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {w.notes}
-                </p>
-              )}
+      {bcsRecords.map((b) => (
+        <li key={b.id} className="flex items-start gap-3 px-4 py-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-block h-2.5 w-2.5 rounded-full shrink-0 ${bcsDotColour(b.bcs_score)}`}
+                aria-hidden="true"
+              />
+              <span className={`text-sm font-semibold ${bcsColour(b.bcs_score)}`}>
+                {b.bcs_score}/9
+              </span>
             </div>
-          </li>
-        );
-      })}
+            <p className="text-xs text-muted-foreground">
+              {fmtDate(b.assessed_at)}
+            </p>
+            {b.notes && (
+              <p className="mt-0.5 text-xs text-muted-foreground">{b.notes}</p>
+            )}
+          </div>
+        </li>
+      ))}
     </ul>
   );
 }

@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import {
   CalendarDays,
   PawPrint,
-  FileText,
   Receipt,
   LayoutDashboard,
   Settings,
@@ -19,7 +18,6 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/patients", label: "Patients", icon: PawPrint },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/consults", label: "Consults", icon: FileText },
   { href: "/invoices", label: "Invoices", icon: Receipt },
   { href: "/products", label: "Products", icon: Package },
   { href: "/reports", label: "Reports", icon: BarChart3 },

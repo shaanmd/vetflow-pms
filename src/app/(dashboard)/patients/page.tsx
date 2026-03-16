@@ -44,7 +44,7 @@ export default async function PatientsPage() {
   const practiceIds = (userPractices ?? []).map((up) => up.practice_id);
 
   // Fetch patients with owner name, ordered by updated_at desc
-  // Also fetch the most recent consult_date per patient via a subquery approach
+  // Also fetch the most recent appointment date (where clinical notes exist) per patient
   const { data: patients } = practiceIds.length
     ? await supabase
         .from("patients")
@@ -59,8 +59,9 @@ export default async function PatientsPage() {
           owner:clients!owner_id (
             name
           ),
-          consults (
-            consult_date
+          appointments (
+            date,
+            clinical_status
           )
         `
         )
@@ -68,14 +69,15 @@ export default async function PatientsPage() {
         .order("updated_at", { ascending: false })
     : { data: [] };
 
-  // Resolve the most recent consult_date for each patient
+  // Resolve the most recent appointment date with clinical notes for each patient
   const patientList = (patients ?? []).map((p) => {
-    const consults = (p.consults ?? []) as { consult_date: string }[];
+    const appts = (p.appointments ?? []) as { date: string; clinical_status: string }[];
+    const withNotes = appts.filter((a) => a.clinical_status !== "none");
     const lastVisit =
-      consults.length > 0
-        ? consults.reduce((latest, c) =>
-            c.consult_date > latest.consult_date ? c : latest
-          ).consult_date
+      withNotes.length > 0
+        ? withNotes.reduce((latest, a) =>
+            a.date > latest.date ? a : latest
+          ).date
         : null;
 
     const ownerRaw = p.owner;
