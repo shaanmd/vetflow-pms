@@ -1,4 +1,5 @@
 import { Plus, Search } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -73,10 +74,12 @@ export default async function InvoicesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Invoices</h1>
-        <Button size="sm" className="min-h-[44px]">
-          <Plus className="h-4 w-4 mr-1" />
-          New Invoice
-        </Button>
+        <Link href="/invoices/new">
+          <Button size="sm" className="min-h-[44px]">
+            <Plus className="h-4 w-4 mr-1" />
+            New Invoice
+          </Button>
+        </Link>
       </div>
 
       {/* AR Summary */}
