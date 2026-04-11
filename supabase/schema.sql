@@ -170,6 +170,12 @@ create table prescriptions (
   instructions text,
   dispensed boolean not null default false,
   dispensed_date date,
+  -- Regulatory fields (QLD Vet Board)
+  schedule text CHECK (schedule IN ('S2', 'S3', 'S4', 'S8', 'unscheduled')),
+  batch_number text,
+  supplier_ref text,
+  withdrawal_period_days int,  -- equine / food animal use
+  is_controlled boolean GENERATED ALWAYS AS (schedule IN ('S4', 'S8')) STORED,
   created_at timestamptz not null default now()
 );
 

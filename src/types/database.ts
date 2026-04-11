@@ -7,6 +7,7 @@ export type PatientStatus = "active" | "deceased" | "transferred";
 export type AppointmentStatus = "scheduled" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 export type InvoiceStatus = "draft" | "sent" | "paid" | "partially_paid" | "overdue" | "void";
 export type LocationType = "clinic" | "house_call";
+export type DrugSchedule = 'S2' | 'S3' | 'S4' | 'S8' | 'unscheduled';
 
 export interface Practice {
   id: string;
@@ -185,4 +186,24 @@ export interface Product {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface Prescription {
+  id: string;
+  appointment_id: string;
+  patient_id: string;
+  medication: string;
+  dose: string | null;
+  frequency: string | null;
+  duration: string | null;
+  quantity: string | null;
+  instructions: string | null;
+  dispensed: boolean;
+  dispensed_date: string | null;
+  schedule: DrugSchedule | null;
+  batch_number: string | null;
+  supplier_ref: string | null;
+  withdrawal_period_days: number | null;
+  is_controlled: boolean;
+  created_at: string;
 }
