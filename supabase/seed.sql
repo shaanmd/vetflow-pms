@@ -414,4 +414,18 @@ INSERT INTO care_packages (practice_id, name, included_sessions, total_price, sa
   (practice2_id, 'Silver — 10 Sessions', '[{"type": "initial", "qty": 1}, {"type": "followup", "qty": 9}]'::jsonb, 1450.00, 315.00, 6, 241.67),
   (practice2_id, 'Gold — 14 Sessions', '[{"type": "initial", "qty": 1}, {"type": "followup", "qty": 13}]'::jsonb, 1950.00, 455.00, 7, 278.57);
 
+-- ============================================
+-- PRODUCTS — default invoice line items
+-- Replace 'YOUR_PRACTICE_UUID' with the actual practice UUID before running
+-- ============================================
+INSERT INTO products (name, description, type, category, practice_id, price, tax_rate, is_active)
+VALUES
+  ('Initial Consultation', 'Initial assessment and examination', 'service', 'consultation', 'YOUR_PRACTICE_UUID', 150.00, 10.00, true),
+  ('Follow-up Consultation', 'Follow-up examination', 'service', 'consultation', 'YOUR_PRACTICE_UUID', 100.00, 10.00, true),
+  ('Equine Dental Float', 'Full dental float under sedation', 'service', 'dental', 'YOUR_PRACTICE_UUID', 350.00, 10.00, true),
+  ('Hydrotherapy Session', '30-min underwater treadmill session', 'service', 'rehabilitation', 'YOUR_PRACTICE_UUID', 85.00, 10.00, true),
+  ('Laser Therapy', 'Photobiomodulation therapy session', 'service', 'rehabilitation', 'YOUR_PRACTICE_UUID', 65.00, 10.00, true),
+  ('Travel Fee - 0-15km', 'House call travel within 15km', 'service', 'travel', 'YOUR_PRACTICE_UUID', 25.00, 10.00, true),
+  ('Travel Fee - 15-30km', 'House call travel 15-30km', 'service', 'travel', 'YOUR_PRACTICE_UUID', 45.00, 10.00, true);
+
 END $$;
