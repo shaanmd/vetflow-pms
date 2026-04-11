@@ -207,3 +207,11 @@ export interface Prescription {
   is_controlled: boolean;
   created_at: string;
 }
+
+export interface AppointmentAddendum {
+  id: string;
+  appointment_id: string;
+  content: string;
+  added_by: string;
+  created_at: string;
+}
