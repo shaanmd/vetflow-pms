@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAppointments, type AppointmentRow } from "./actions";
+import { ConsultSheet } from "./consult-sheet";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedAppointment, setSelectedAppointment] = useState<AppointmentRow | null>(null);
 
   // Fetch appointments whenever the date changes (day view only)
   useEffect(() => {
@@ -75,6 +77,15 @@ export default function CalendarPage() {
       cancelled = true;
     };
   }, [currentDate, view]);
+
+  // Re-fetch appointments for the current date
+  function refreshAppointments() {
+    setLoading(true);
+    getAppointments(toDateString(currentDate)).then((data) => {
+      setAppointments(data);
+      setLoading(false);
+    });
+  }
 
   // ── Date navigation ──────────────────────────────────────────────────────
   function prevDay() {
@@ -109,10 +120,18 @@ export default function CalendarPage() {
     const startLabel = formatTime(apt.start_time);
     const endLabel = formatTime(apt.end_time);
 
+    const clinicalDot =
+      apt.clinical_status === "finalised" ? (
+        <span className="inline-block w-2 h-2 rounded-full bg-green-500 shrink-0" title="Finalised" />
+      ) : apt.clinical_status === "draft" ? (
+        <span className="inline-block w-2 h-2 rounded-full bg-amber-400 shrink-0" title="Draft" />
+      ) : null;
+
     return (
       <Card
         key={apt.id}
         className={`border-l-4 ${colour} cursor-pointer hover:shadow-md transition-shadow`}
+        onClick={() => !isTravel && setSelectedAppointment(apt)}
       >
         <CardContent className="p-3">
           <div className="flex items-center justify-between">
@@ -145,14 +164,17 @@ export default function CalendarPage() {
                 </>
               )}
             </div>
-            {!isTravel && apt.status !== "scheduled" && (
-              <Badge
-                variant="outline"
-                className="text-[10px] capitalize shrink-0 ml-2"
-              >
-                {apt.status}
-              </Badge>
-            )}
+            <div className="flex items-center gap-2 shrink-0 ml-2">
+              {!isTravel && clinicalDot}
+              {!isTravel && apt.status !== "scheduled" && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] capitalize"
+                >
+                  {apt.status}
+                </Badge>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -297,6 +319,13 @@ export default function CalendarPage() {
           </CardContent>
         </Card>
       )}
+
+      <ConsultSheet
+        appointment={selectedAppointment}
+        open={selectedAppointment !== null}
+        onClose={() => setSelectedAppointment(null)}
+        onSaved={refreshAppointments}
+      />
     </div>
   );
 }
