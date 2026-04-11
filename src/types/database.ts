@@ -68,6 +68,7 @@ export interface UserPractice {
   user_id: string;
   practice_id: string;
   role: UserRole;
+  access_expires_at: string | null;
 }
 
 export interface Client {

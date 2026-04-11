@@ -46,6 +46,7 @@ create table user_practices (
   user_id uuid not null references users(id) on delete cascade,
   practice_id uuid not null references practices(id) on delete cascade,
   role text not null check (role in ('owner', 'clinic_owner', 'vet', 'admin', 'client', 'locum')),
+  access_expires_at timestamptz,  -- locum only: when their access to THIS practice expires
   primary key (user_id, practice_id)
 );
 
