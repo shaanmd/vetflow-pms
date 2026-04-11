@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import type { AppointmentRow } from "./actions";
 import { saveConsultDraft, finaliseConsult } from "./consult-actions";
 import { PrescriptionForm } from "./prescription-form";
+import { RecordButton } from "@/components/vetscribe/record-button";
+import { TranscriptReview } from "@/components/vetscribe/transcript-review";
 
 interface ConsultNoteFormProps {
   appointment: AppointmentRow;
@@ -32,6 +34,7 @@ export function ConsultNoteForm({ appointment, onSaved, onClose }: ConsultNoteFo
   const [treatmentPlan, setTreatmentPlan] = useState(appointment.treatment_plan ?? "");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [finalising, setFinalising] = useState(false);
+  const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const draftData = useCallback(() => ({
@@ -42,6 +45,43 @@ export function ConsultNoteForm({ appointment, onSaved, onClose }: ConsultNoteFo
     diagnosis,
     treatment_plan: treatmentPlan,
   }), [consultDate, presentingComplaint, history, examination, diagnosis, treatmentPlan]);
+
+  function handleTranscriptReady(transcript: string) {
+    setPendingTranscript(transcript);
+  }
+
+  function handleNoteAccepted(
+    note: {
+      presenting_complaint: string;
+      history: string;
+      examination: string;
+      diagnosis: string;
+      treatment_plan: string;
+    },
+    rawTranscript: string
+  ) {
+    // Only fill fields that are currently empty
+    if (!presentingComplaint.trim()) setPresentingComplaint(note.presenting_complaint);
+    if (!history.trim()) setHistory(note.history);
+    if (!examination.trim()) setExamination(note.examination);
+    if (!diagnosis.trim()) setDiagnosis(note.diagnosis);
+    if (!treatmentPlan.trim()) setTreatmentPlan(note.treatment_plan);
+
+    // Store transcript + AI output immediately (regulatory requirement SC-11)
+    saveConsultDraft(appointment.id, {
+      consult_date: consultDate,
+      presenting_complaint: note.presenting_complaint || presentingComplaint,
+      history: note.history || history,
+      examination: note.examination || examination,
+      diagnosis: note.diagnosis || diagnosis,
+      treatment_plan: note.treatment_plan || treatmentPlan,
+      notes_transcript: rawTranscript,
+      notes_ai_generated: JSON.stringify(note),
+    });
+
+    setPendingTranscript(null);
+    toast.success("SOAP note generated — review and edit before finalising");
+  }
 
   useEffect(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
@@ -90,6 +130,30 @@ export function ConsultNoteForm({ appointment, onSaved, onClose }: ConsultNoteFo
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+
+        {/* VetScribe */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              VetScribe
+            </Label>
+            <RecordButton
+              onTranscriptReady={handleTranscriptReady}
+              onError={(msg) => toast.error(msg)}
+              disabled={pendingTranscript !== null}
+            />
+          </div>
+
+          {pendingTranscript !== null && (
+            <TranscriptReview
+              transcript={pendingTranscript}
+              patientName={appointment.patient?.name ?? ""}
+              patientSpecies={appointment.patient?.species ?? ""}
+              onAccept={handleNoteAccepted}
+              onDiscard={() => setPendingTranscript(null)}
+            />
+          )}
+        </div>
 
         <div className="space-y-1.5">
           <Label htmlFor="consult-date" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

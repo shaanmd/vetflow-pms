@@ -9,6 +9,8 @@ interface DraftData {
   examination: string;
   diagnosis: string;
   treatment_plan: string;
+  notes_transcript?: string;
+  notes_ai_generated?: string;
 }
 
 export async function saveConsultDraft(
@@ -29,6 +31,8 @@ export async function saveConsultDraft(
       examination: data.examination || null,
       diagnosis: data.diagnosis || null,
       treatment_plan: data.treatment_plan || null,
+      ...(data.notes_transcript !== undefined && { notes_transcript: data.notes_transcript }),
+      ...(data.notes_ai_generated !== undefined && { notes_ai_generated: data.notes_ai_generated }),
       clinical_status: "draft",
       updated_by: user.id,
     })
