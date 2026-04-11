@@ -92,14 +92,14 @@ create table patients (
   updated_at timestamptz not null default now()
 );
 
--- BCS (Body Condition Score) history — replaces patient_weights
+-- BCS (Body Condition Score) history
 create table patient_bcs (
   id uuid primary key default uuid_generate_v4(),
   patient_id uuid not null references patients(id) on delete cascade,
-  score integer not null check (score between 1 and 9),  -- 1-9 BCS scale
+  bcs_score integer not null check (bcs_score between 1 and 9),
   assessed_by uuid references users(id),
   notes text,
-  recorded_at date not null default current_date,
+  assessed_at date not null default current_date,
   created_at timestamptz not null default now()
 );
 
