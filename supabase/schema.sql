@@ -361,9 +361,7 @@ create index idx_invoices_practice on invoices(practice_id, status);
 create index idx_audit_entity on audit_logs(entity_type, entity_id);
 create index idx_clients_practice on client_practices(practice_id);
 
--- ============================================
--- ROW LEVEL SECURITY (RLS)
--- ============================================
+-- ── ROW LEVEL SECURITY ─────────────────────────────────────────────────────
 
 -- Enable RLS on all tables
 alter table practices enable row level security;
@@ -387,76 +385,344 @@ alter table communication_logs enable row level security;
 alter table audit_logs enable row level security;
 alter table file_attachments enable row level security;
 
--- Helper function: get practice IDs for current user
-create or replace function get_user_practice_ids()
-returns uuid[] as $$
-  select array_agg(practice_id) from user_practices where user_id = auth.uid();
-$$ language sql security definer stable;
+-- ── Helper functions ────────────────────────────────────────────────────────
 
--- RLS Policies: users can only see data for their practices
-create policy "Users see own profile" on users for select using (id = auth.uid());
-create policy "Users update own profile" on users for update using (id = auth.uid());
+CREATE OR REPLACE FUNCTION is_practice_member(p_practice_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM user_practices
+    WHERE user_id = auth.uid()
+      AND practice_id = p_practice_id
+      AND (role != 'locum' OR access_expires_at IS NULL OR access_expires_at > now())
+  );
+$$;
 
-create policy "Users see own practice links" on user_practices for select
-  using (user_id = auth.uid());
+CREATE OR REPLACE FUNCTION my_role_in(p_practice_id uuid)
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT role FROM user_practices
+  WHERE user_id = auth.uid()
+    AND practice_id = p_practice_id
+    AND (role != 'locum' OR access_expires_at IS NULL OR access_expires_at > now())
+  LIMIT 1;
+$$;
 
-create policy "Users see their practices" on practices for select
-  using (id = any(get_user_practice_ids()));
+CREATE OR REPLACE FUNCTION has_clinical_access(p_practice_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT my_role_in(p_practice_id) IN ('owner', 'clinic_owner', 'vet', 'locum');
+$$;
 
-create policy "Users see practice clients" on clients for select
-  using (id in (
-    select client_id from client_practices where practice_id = any(get_user_practice_ids())
-  ));
+CREATE OR REPLACE FUNCTION has_admin_access(p_practice_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT my_role_in(p_practice_id) IN ('owner', 'clinic_owner', 'admin');
+$$;
 
-create policy "Users manage practice clients" on clients for all
-  using (id in (
-    select client_id from client_practices where practice_id = any(get_user_practice_ids())
-  ));
+CREATE OR REPLACE FUNCTION is_practice_owner(p_practice_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT my_role_in(p_practice_id) IN ('owner', 'clinic_owner');
+$$;
 
-create policy "Users see practice patients" on patients for select
-  using (practice_id = any(get_user_practice_ids()));
+CREATE OR REPLACE FUNCTION my_client_id()
+RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT id FROM clients WHERE user_id = auth.uid() LIMIT 1;
+$$;
 
-create policy "Users manage practice patients" on patients for all
-  using (practice_id = any(get_user_practice_ids()));
+-- ── PRACTICES ──────────────────────────────────────────────────────────────
 
-create policy "Users see practice bcs" on patient_bcs for select
-  using (patient_id in (select id from patients where practice_id = any(get_user_practice_ids())));
+CREATE POLICY "member_can_view_practice"
+  ON practices FOR SELECT USING (is_practice_member(id));
 
-create policy "Users manage practice bcs" on patient_bcs for all
-  using (patient_id in (select id from patients where practice_id = any(get_user_practice_ids())));
+CREATE POLICY "owner_can_update_practice"
+  ON practices FOR UPDATE USING (is_practice_owner(id));
 
-create policy "Users see practice appointments" on appointments for select
-  using (practice_id = any(get_user_practice_ids()));
+CREATE POLICY "owner_can_insert_practice"
+  ON practices FOR INSERT WITH CHECK (true);
 
-create policy "Users manage practice appointments" on appointments for all
-  using (practice_id = any(get_user_practice_ids()));
+-- ── USER_PRACTICES ─────────────────────────────────────────────────────────
 
-create policy "Users see practice appointment addendums" on appointment_addendums for select
-  using (appointment_id in (select id from appointments where practice_id = any(get_user_practice_ids())));
+CREATE POLICY "view_memberships"
+  ON user_practices FOR SELECT
+  USING (user_id = auth.uid() OR is_practice_owner(practice_id));
 
-create policy "Users manage practice appointment addendums" on appointment_addendums for all
-  using (appointment_id in (select id from appointments where practice_id = any(get_user_practice_ids())));
+CREATE POLICY "owner_manages_memberships"
+  ON user_practices FOR ALL
+  USING (is_practice_owner(practice_id))
+  WITH CHECK (is_practice_owner(practice_id));
 
-create policy "Users see practice invoices" on invoices for select
-  using (practice_id = any(get_user_practice_ids()));
+-- ── USERS ──────────────────────────────────────────────────────────────────
 
-create policy "Users manage practice invoices" on invoices for all
-  using (practice_id = any(get_user_practice_ids()));
+CREATE POLICY "view_own_profile"
+  ON users FOR SELECT USING (id = auth.uid());
 
-create policy "Users see practice products" on products for select
-  using (practice_id = any(get_user_practice_ids()));
+CREATE POLICY "practice_members_see_colleagues"
+  ON users FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM user_practices up1
+      JOIN user_practices up2 ON up1.practice_id = up2.practice_id
+      WHERE up1.user_id = auth.uid() AND up2.user_id = users.id
+    )
+  );
 
-create policy "Users manage practice products" on products for all
-  using (practice_id = any(get_user_practice_ids()));
+CREATE POLICY "update_own_profile"
+  ON users FOR UPDATE USING (id = auth.uid());
 
-create policy "Users see practice audit logs" on audit_logs for select
-  using (practice_id = any(get_user_practice_ids()));
+-- ── CLIENTS ────────────────────────────────────────────────────────────────
 
-create policy "Users see practice files" on file_attachments for select
-  using (practice_id = any(get_user_practice_ids()));
+CREATE POLICY "staff_can_view_clients"
+  ON clients FOR SELECT
+  USING (
+    id = my_client_id()
+    OR EXISTS (
+      SELECT 1 FROM client_practices cp
+      WHERE cp.client_id = clients.id AND is_practice_member(cp.practice_id)
+    )
+  );
 
-create policy "Users manage practice files" on file_attachments for all
-  using (practice_id = any(get_user_practice_ids()));
+CREATE POLICY "staff_can_insert_clients"
+  ON clients FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "admin_can_update_clients"
+  ON clients FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM client_practices cp
+      WHERE cp.client_id = clients.id AND has_admin_access(cp.practice_id)
+    )
+  );
+
+-- ── PATIENTS ───────────────────────────────────────────────────────────────
+
+CREATE POLICY "staff_can_view_patients"
+  ON patients FOR SELECT
+  USING (is_practice_member(practice_id) OR owner_id = my_client_id());
+
+CREATE POLICY "staff_can_insert_patients"
+  ON patients FOR INSERT WITH CHECK (is_practice_member(practice_id));
+
+CREATE POLICY "staff_can_update_patients"
+  ON patients FOR UPDATE USING (is_practice_member(practice_id));
+
+-- ── PATIENT_BCS ────────────────────────────────────────────────────────────
+
+CREATE POLICY "staff_can_view_bcs"
+  ON patient_bcs FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM patients p
+      WHERE p.id = patient_bcs.patient_id AND is_practice_member(p.practice_id)
+    )
+  );
+
+CREATE POLICY "staff_can_manage_bcs"
+  ON patient_bcs FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM patients p
+      WHERE p.id = patient_bcs.patient_id AND is_practice_member(p.practice_id)
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM patients p
+      WHERE p.id = patient_bcs.patient_id AND is_practice_member(p.practice_id)
+    )
+  );
+
+-- ── APPOINTMENTS ───────────────────────────────────────────────────────────
+
+CREATE POLICY "staff_can_view_appointments"
+  ON appointments FOR SELECT
+  USING (is_practice_member(practice_id) OR client_id = my_client_id());
+
+CREATE POLICY "staff_can_insert_appointments"
+  ON appointments FOR INSERT WITH CHECK (is_practice_member(practice_id));
+
+CREATE POLICY "client_can_book_appointment"
+  ON appointments FOR INSERT WITH CHECK (client_id = my_client_id());
+
+CREATE POLICY "staff_can_update_appointments"
+  ON appointments FOR UPDATE USING (is_practice_member(practice_id));
+
+CREATE POLICY "client_can_cancel_own_appointment"
+  ON appointments FOR UPDATE
+  USING (client_id = my_client_id() AND status IN ('scheduled', 'confirmed'));
+
+-- No DELETE policy on appointments
+
+-- ── APPOINTMENT_ADDENDUMS ──────────────────────────────────────────────────
+
+-- Only clinical staff can view/create addendums; no UPDATE or DELETE
+CREATE POLICY "clinical_staff_can_view_addendums"
+  ON appointment_addendums FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM appointments a
+      WHERE a.id = appointment_addendums.appointment_id
+        AND has_clinical_access(a.practice_id)
+    )
+  );
+
+CREATE POLICY "clinical_staff_can_insert_addendums"
+  ON appointment_addendums FOR INSERT
+  WITH CHECK (
+    added_by = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM appointments a
+      WHERE a.id = appointment_addendums.appointment_id
+        AND has_clinical_access(a.practice_id)
+    )
+  );
+
+-- ── PRESCRIPTIONS ──────────────────────────────────────────────────────────
+
+-- Clinical only. No DELETE.
+CREATE POLICY "clinical_staff_can_view_prescriptions"
+  ON prescriptions FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM appointments a
+      WHERE a.id = prescriptions.appointment_id AND has_clinical_access(a.practice_id)
+    )
+  );
+
+CREATE POLICY "clinical_staff_can_insert_prescriptions"
+  ON prescriptions FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM appointments a
+      WHERE a.id = prescriptions.appointment_id AND has_clinical_access(a.practice_id)
+    )
+  );
+
+CREATE POLICY "clinical_staff_can_update_prescriptions"
+  ON prescriptions FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM appointments a
+      WHERE a.id = prescriptions.appointment_id AND has_clinical_access(a.practice_id)
+    )
+  );
+
+-- ── PRODUCTS ───────────────────────────────────────────────────────────────
+
+CREATE POLICY "staff_can_view_products"
+  ON products FOR SELECT USING (is_practice_member(practice_id));
+
+CREATE POLICY "admin_can_manage_products"
+  ON products FOR ALL
+  USING (has_admin_access(practice_id))
+  WITH CHECK (has_admin_access(practice_id));
+
+-- ── INVOICES ───────────────────────────────────────────────────────────────
+
+CREATE POLICY "can_view_invoices"
+  ON invoices FOR SELECT
+  USING (
+    has_admin_access(practice_id)
+    OR (has_clinical_access(practice_id) AND performing_vet_id = auth.uid())
+    OR client_id = my_client_id()
+  );
+
+CREATE POLICY "staff_can_insert_invoices"
+  ON invoices FOR INSERT
+  WITH CHECK (has_admin_access(practice_id) OR has_clinical_access(practice_id));
+
+CREATE POLICY "admin_can_update_unpaid_invoices"
+  ON invoices FOR UPDATE
+  USING (has_admin_access(practice_id) AND status != 'paid');
+
+CREATE POLICY "owner_can_update_any_invoice"
+  ON invoices FOR UPDATE USING (is_practice_owner(practice_id));
+
+-- ── INVOICE_LINE_ITEMS ─────────────────────────────────────────────────────
+
+CREATE POLICY "inherit_invoice_access_for_line_items"
+  ON invoice_line_items FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM invoices i
+      WHERE i.id = invoice_line_items.invoice_id
+        AND (
+          has_admin_access(i.practice_id)
+          OR (has_clinical_access(i.practice_id) AND i.performing_vet_id = auth.uid())
+          OR i.client_id = my_client_id()
+        )
+    )
+  );
+
+CREATE POLICY "staff_can_manage_line_items"
+  ON invoice_line_items FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM invoices i
+      WHERE i.id = invoice_line_items.invoice_id
+        AND (has_admin_access(i.practice_id) OR has_clinical_access(i.practice_id))
+    )
+  );
+
+-- ── AUDIT_LOGS ─────────────────────────────────────────────────────────────
+
+CREATE POLICY "owners_can_view_audit_logs"
+  ON audit_logs FOR SELECT USING (is_practice_owner(practice_id));
+
+-- No INSERT policy for authenticated users — use write_audit_log() function only.
+
+-- ── FILE_ATTACHMENTS ───────────────────────────────────────────────────────
+
+CREATE POLICY "staff_can_view_files"
+  ON file_attachments FOR SELECT USING (is_practice_member(practice_id));
+
+CREATE POLICY "staff_can_insert_files"
+  ON file_attachments FOR INSERT
+  WITH CHECK (is_practice_member(practice_id) AND uploaded_by = auth.uid());
+
+-- No DELETE for files (soft-delete via application layer if needed)
+
+-- ── CARE PACKAGES ──────────────────────────────────────────────────────────
+
+CREATE POLICY "staff_can_view_care_packages"
+  ON care_packages FOR SELECT USING (is_practice_member(practice_id));
+
+CREATE POLICY "admin_can_manage_care_packages"
+  ON care_packages FOR ALL
+  USING (has_admin_access(practice_id))
+  WITH CHECK (has_admin_access(practice_id));
+
+CREATE POLICY "staff_can_view_enrollments"
+  ON care_package_enrollments FOR SELECT
+  USING (
+    client_id = my_client_id()
+    OR EXISTS (
+      SELECT 1 FROM care_packages cp
+      WHERE cp.id = care_package_enrollments.package_id AND is_practice_member(cp.practice_id)
+    )
+  );
+
+CREATE POLICY "admin_can_manage_enrollments"
+  ON care_package_enrollments FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM care_packages cp
+      WHERE cp.id = care_package_enrollments.package_id AND has_admin_access(cp.practice_id)
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM care_packages cp
+      WHERE cp.id = care_package_enrollments.package_id AND has_admin_access(cp.practice_id)
+    )
+  );
+
+CREATE POLICY "staff_can_manage_reminders"
+  ON reminders FOR ALL
+  USING (is_practice_member(practice_id))
+  WITH CHECK (is_practice_member(practice_id));
+
+CREATE POLICY "staff_can_view_comm_logs"
+  ON communication_logs FOR SELECT USING (is_practice_member(practice_id));
+
+CREATE POLICY "system_can_insert_comm_logs"
+  ON communication_logs FOR INSERT WITH CHECK (true);
 
 -- ============================================
 -- TRIGGERS: auto-update updated_at
